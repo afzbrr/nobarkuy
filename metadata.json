@@ -1,0 +1,6 @@
+{
+  "name": "NOBAR KUY",
+  "description": "Telegram Mini App Nobar Bareng Temen, Chat Realtime, Koleksi & Hias Border Foto Profil Keren",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
