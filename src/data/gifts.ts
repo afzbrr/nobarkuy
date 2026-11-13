@@ -1,0 +1,223 @@
+export type GiftTier = 'standard' | 'special' | 'luxury';
+
+export interface GiftDefinition {
+  id: string;
+  nama: string;
+  emoji: string;
+  harga: number;
+  tier: GiftTier;
+  accentColor: string;
+  glowColor: string;
+  bgGradient: string;
+  ringGradient: string;
+  tagline: string;
+  particles: string[];
+}
+
+export const GIFT_CATALOG: GiftDefinition[] = [
+  // 50 COIN (8 items)
+  {
+    id: 'bunga',
+    nama: 'Bunga',
+    emoji: '💐',
+    harga: 50,
+    tier: 'standard',
+    accentColor: '#F472B6',
+    glowColor: 'rgba(244, 114, 182, 0.55)',
+    bgGradient: 'linear-gradient(135deg, #F472B6, #FB7185, #A855F7)',
+    ringGradient: 'conic-gradient(from 0deg, #F472B6, #FDE047, #FB7185, #F472B6)',
+    tagline: 'Buket harum buat Host tersayang!',
+    particles: ['🌸', '🌷', '✨', '💮'],
+  },
+  {
+    id: 'boneka',
+    nama: 'Boneka',
+    emoji: '🧸',
+    harga: 50,
+    tier: 'standard',
+    accentColor: '#FBBF24',
+    glowColor: 'rgba(251, 191, 36, 0.5)',
+    bgGradient: 'linear-gradient(135deg, #F59E0B, #F472B6, #FDE68A)',
+    ringGradient: 'conic-gradient(from 0deg, #FBBF24, #F472B6, #FDE68A, #FBBF24)',
+    tagline: 'Boneka gemoy biar nobarnya makin hangat!',
+    particles: ['🧸', '💛', '✨', '🎀'],
+  },
+  {
+    id: 'kotak-hadiah',
+    nama: 'Kotak Hadiah',
+    emoji: '🎁',
+    harga: 50,
+    tier: 'standard',
+    accentColor: '#EF4444',
+    glowColor: 'rgba(239, 68, 68, 0.55)',
+    bgGradient: 'linear-gradient(135deg, #EF4444, #F59E0B, #EC4899)',
+    ringGradient: 'conic-gradient(from 0deg, #EF4444, #FACC15, #EC4899, #EF4444)',
+    tagline: 'Kado kejutan spesial buat Host!',
+    particles: ['🎁', '🎊', '✨', '🎉'],
+  },
+  {
+    id: 'nasi-goreng',
+    nama: 'Nasi Goreng',
+    emoji: '🍛',
+    harga: 50,
+    tier: 'standard',
+    accentColor: '#F97316',
+    glowColor: 'rgba(249, 115, 22, 0.55)',
+    bgGradient: 'linear-gradient(135deg, #EA580C, #FACC15, #DC2626)',
+    ringGradient: 'conic-gradient(from 0deg, #F97316, #FDE047, #EF4444, #F97316)',
+    tagline: 'Biar Host ga laper pas nemenin nobar!',
+    particles: ['🍛', '🔥', '🍳', '✨'],
+  },
+  {
+    id: 'kentang',
+    nama: 'Kentang',
+    emoji: '🍟',
+    harga: 50,
+    tier: 'standard',
+    accentColor: '#EAB308',
+    glowColor: 'rgba(234, 179, 8, 0.55)',
+    bgGradient: 'linear-gradient(135deg, #EAB308, #EF4444, #FDE047)',
+    ringGradient: 'conic-gradient(from 0deg, #FACC15, #EF4444, #FB923C, #FACC15)',
+    tagline: 'Cemilan krispi wajib pas nonton!',
+    particles: ['🍟', '🧂', '✨', '💛'],
+  },
+  {
+    id: 'burger',
+    nama: 'Burger',
+    emoji: '🍔',
+    harga: 50,
+    tier: 'standard',
+    accentColor: '#FB923C',
+    glowColor: 'rgba(251, 146, 60, 0.55)',
+    bgGradient: 'linear-gradient(135deg, #F97316, #84CC16, #FACC15)',
+    ringGradient: 'conic-gradient(from 0deg, #FB923C, #FACC15, #22C55E, #FB923C)',
+    tagline: 'Burger tebel biar Host makin semangat!',
+    particles: ['🍔', '🧀', '✨', '🔥'],
+  },
+  {
+    id: 'jus-orange',
+    nama: 'Jus Orange',
+    emoji: '🍊',
+    harga: 50,
+    tier: 'standard',
+    accentColor: '#FB923C',
+    glowColor: 'rgba(251, 146, 60, 0.6)',
+    bgGradient: 'linear-gradient(135deg, #FF7A00, #FACC15, #FB923C)',
+    ringGradient: 'conic-gradient(from 0deg, #FF7A00, #FEF08A, #F97316, #FF7A00)',
+    tagline: 'Segerrr! Vitamin C buat Host kesayangan!',
+    particles: ['🍊', '🧊', '💧', '✨'],
+  },
+  {
+    id: 'kacamata-hitam',
+    nama: 'Kacamata Hitam',
+    emoji: '🕶️',
+    harga: 50,
+    tier: 'standard',
+    accentColor: '#38BDF8',
+    glowColor: 'rgba(56, 189, 248, 0.5)',
+    bgGradient: 'linear-gradient(135deg, #0EA5E9, #1E293B, #6366F1)',
+    ringGradient: 'conic-gradient(from 0deg, #38BDF8, #0F172A, #818CF8, #38BDF8)',
+    tagline: 'Gaya kece abis! Host auto paling cool!',
+    particles: ['🕶️', '⚡', '💎', '✨'],
+  },
+
+  // 100 COIN (4 items)
+  {
+    id: 'coklat',
+    nama: 'Coklat',
+    emoji: '🍫',
+    harga: 100,
+    tier: 'special',
+    accentColor: '#D97706',
+    glowColor: 'rgba(217, 119, 6, 0.65)',
+    bgGradient: 'linear-gradient(135deg, #78350F, #D97706, #F43F5E)',
+    ringGradient: 'conic-gradient(from 0deg, #B45309, #FDE047, #FB7185, #78350F, #B45309)',
+    tagline: 'Manisnya coklat premium buat Host!',
+    particles: ['🍫', '🤎', '✨', '🍬'],
+  },
+  {
+    id: 'kucing',
+    nama: 'Kucing',
+    emoji: '🐱',
+    harga: 100,
+    tier: 'special',
+    accentColor: '#C084FC',
+    glowColor: 'rgba(192, 132, 252, 0.65)',
+    bgGradient: 'linear-gradient(135deg, #A855F7, #F472B6, #FDE047)',
+    ringGradient: 'conic-gradient(from 0deg, #C084FC, #F472B6, #38BDF8, #C084FC)',
+    tagline: 'Meong imut dateng nyamperin Host!',
+    particles: ['🐱', '🐾', '💜', '✨'],
+  },
+  {
+    id: 'kambing',
+    nama: 'Kambing',
+    emoji: '🐐',
+    harga: 100,
+    tier: 'special',
+    accentColor: '#34D399',
+    glowColor: 'rgba(52, 211, 153, 0.65)',
+    bgGradient: 'linear-gradient(135deg, #10B981, #FACC15, #059669)',
+    ringGradient: 'conic-gradient(from 0deg, #34D399, #FDE047, #22D3EE, #34D399)',
+    tagline: 'G.O.A.T! Host terhebat sepanjang masa!',
+    particles: ['🐐', '👑', '⚡', '✨'],
+  },
+  {
+    id: 'kacamata-love',
+    nama: 'Kacamata Love',
+    emoji: '🩷',
+    harga: 100,
+    tier: 'special',
+    accentColor: '#EC4899',
+    glowColor: 'rgba(236, 72, 153, 0.72)',
+    bgGradient: 'linear-gradient(135deg, #FF2D75, #A855F7, #F472B6)',
+    ringGradient: 'conic-gradient(from 0deg, #FF2D75, #FDE047, #EC4899, #C084FC, #FF2D75)',
+    tagline: 'Vibes penuh cinta pake kacamata love!',
+    particles: ['💖', '💕', '✨', '🩷'],
+  },
+
+  // 200 COIN (3 items)
+  {
+    id: 'singa',
+    nama: 'Singa',
+    emoji: '🦁',
+    harga: 200,
+    tier: 'luxury',
+    accentColor: '#F59E0B',
+    glowColor: 'rgba(245, 158, 11, 0.85)',
+    bgGradient: 'linear-gradient(135deg, #FF4500, #F59E0B, #FDE047)',
+    ringGradient: 'conic-gradient(from 0deg, #FDE047, #FF4500, #F59E0B, #FFFBEB, #FDE047)',
+    tagline: 'RAWR! Sang Raja Hutan mengaum di Room!',
+    particles: ['🦁', '🔥', '👑', '⚡', '✨'],
+  },
+  {
+    id: 'paus',
+    nama: 'Paus',
+    emoji: '🐳',
+    harga: 200,
+    tier: 'luxury',
+    accentColor: '#06B6D4',
+    glowColor: 'rgba(6, 182, 212, 0.85)',
+    bgGradient: 'linear-gradient(135deg, #0284C7, #06B6D4, #6366F1)',
+    ringGradient: 'conic-gradient(from 0deg, #22D3EE, #3B82F6, #A5F3FC, #6366F1, #22D3EE)',
+    tagline: 'Sultan Paus Samudra beraksi! Splash!',
+    particles: ['🐳', '🌊', '💎', '🫧', '✨'],
+  },
+  {
+    id: 'cincin',
+    nama: 'Cincin',
+    emoji: '💍',
+    harga: 200,
+    tier: 'luxury',
+    accentColor: '#FDE047',
+    glowColor: 'rgba(253, 224, 71, 0.85)',
+    bgGradient: 'linear-gradient(135deg, #FACC15, #EC4899, #38BDF8)',
+    ringGradient: 'conic-gradient(from 0deg, #FEF08A, #EC4899, #38BDF8, #FFFFFF, #FEF08A)',
+    tagline: 'Cincin berlian mewah buat Host spesial!',
+    particles: ['💍', '💎', '💖', '👑', '✨'],
+  },
+];
+
+export const getGiftById = (giftId?: string): GiftDefinition | undefined => {
+  if (!giftId) return undefined;
+  return GIFT_CATALOG.find((g) => g.id === giftId);
+};

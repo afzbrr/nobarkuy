@@ -16,6 +16,7 @@ export const BorderView: React.FC = () => {
   } = useApp();
 
   const [subTab, setSubTab] = useState<'koleksi' | 'hias'>('koleksi');
+  const [borderCategory, setBorderCategory] = useState<'all' | 'nonton' | 'toko' | 'prestasi' | 'hari_besar'>('all');
   const [selectedBorderId, setSelectedBorderId] = useState<string>(currentUser.border_saat_ini || 'pemula');
   const [isShopOpen, setIsShopOpen] = useState(false);
 
@@ -157,10 +158,18 @@ export const BorderView: React.FC = () => {
               <Sparkles className="w-3.5 h-3.5 text-black" />
               <span>Pakai Border Ini</span>
             </button>
+          ) : previewBorderDef.kategori === 'toko' ? (
+            <button
+              onClick={() => setIsShopOpen(true)}
+              className="w-full py-2.5 rounded-xl bg-gradient-to-r from-[#D4AF37] to-[#F59E0B] text-black font-heading font-bold text-xs flex items-center justify-center gap-1.5 shadow-lg transition-transform active:scale-[0.98]"
+            >
+              <ShoppingBag className="w-3.5 h-3.5 text-black" />
+              <span>Beli di Toko ({previewBorderDef.hargaCoin?.toLocaleString('id-ID')} Coin)</span>
+            </button>
           ) : (
             <div className="w-full py-2.5 rounded-xl bg-[#1A1A1A] border border-[#262626] text-stone-500 font-heading font-bold text-xs flex items-center justify-center gap-1.5">
               <Lock className="w-3.5 h-3.5" />
-              <span>Belum Kebuka</span>
+              <span>Terkunci ({previewBorderDef.syarat})</span>
             </div>
           )}
         </div>
@@ -202,7 +211,7 @@ export const BorderView: React.FC = () => {
         <div className="space-y-3">
           <div className="flex items-center justify-between px-1">
             <span className="text-xs text-stone-400">
-              Tap border mana aja buat preview &amp; pakai.
+              {isOwner ? 'Owner bebas pakai semua border 3D!' : 'Tap border buat preview & pakai.'}
             </span>
             <button
               onClick={() => setIsShopOpen(true)}
@@ -213,8 +222,31 @@ export const BorderView: React.FC = () => {
             </button>
           </div>
 
+          {/* Category Filter */}
+          <div className="flex items-center gap-1.5 overflow-x-auto no-scrollbar pb-0.5">
+            {[
+              { id: 'all', label: 'Semua' },
+              { id: 'toko', label: 'Toko 3D' },
+              { id: 'nonton', label: 'Nonton' },
+              { id: 'prestasi', label: 'Prestasi' },
+              { id: 'hari_besar', label: 'Hari Besar' },
+            ].map((cat) => (
+              <button
+                key={cat.id}
+                onClick={() => setBorderCategory(cat.id as typeof borderCategory)}
+                className={`px-2.5 py-1 rounded-lg text-[10.5px] font-heading font-bold shrink-0 border transition-colors ${
+                  borderCategory === cat.id
+                    ? 'bg-white text-black border-white'
+                    : 'bg-[#141414] text-stone-400 border-[#262626] hover:text-white'
+                }`}
+              >
+                {cat.label}
+              </button>
+            ))}
+          </div>
+
           <div className="grid grid-cols-3 gap-2.5">
-            {ALL_BORDERS.map((border) => {
+            {ALL_BORDERS.filter((b) => borderCategory === 'all' || b.kategori === borderCategory).map((border) => {
               const isUnlocked = isOwner || userOwnedBorders.includes(border.id);
               const isEquipped = currentUser.border_saat_ini === border.id;
               const isSelected = selectedBorderId === border.id;

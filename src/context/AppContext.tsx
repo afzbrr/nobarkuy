@@ -14,6 +14,7 @@ import {
   CoinHistoryItem,
   GenreType,
   RouletteWinner,
+  GiftEventPayload,
 } from '../types';
 import { getTelegramUser, isOwnerUsername, triggerHaptic } from '../lib/telegram';
 import { ALL_BORDERS } from '../data/borders';
@@ -57,7 +58,9 @@ interface AppContextValue {
   reactToChat: (chatId: string, emoji: string) => Promise<void>;
   markChatsRead: (chatIds: string[]) => Promise<void>;
   deleteChatMessage: (chatId: string) => Promise<void>;
-  sendFreeGift: (giftName: string) => Promise<void>;
+  sendGift: (giftId: string) => Promise<{ success: boolean; message: string }>;
+  giftQueue: GiftEventPayload[];
+  dismissGiftEvent: (eventId: string) => void;
   createPoll: (pertanyaan: string, pilihan: string[]) => Promise<void>;
   votePoll: (optionId: string) => Promise<void>;
   createQuiz: (pertanyaan: string, pilihan: string[], jawabanBenar: string) => Promise<void>;
@@ -135,11 +138,31 @@ const AppContext = createContext<AppContextValue | null>(null);
 export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const tgUser = useMemo(() => getTelegramUser(), []);
   const isTelegramAuthenticated = Boolean(tgUser && tgUser.id);
+  const initialIsOwner = isOwnerUsername(tgUser?.username);
+
+  const initialUser = useMemo<UserProfile>(() => {
+    if (!tgUser) return EMPTY_USER;
+    const uid = String(tgUser.id);
+    const fullName = [tgUser.first_name, tgUser.last_name].filter(Boolean).join(' ').trim();
+    const uname = (tgUser.username || `user_${uid}`).replace(/^@/, '');
+    return {
+      ...EMPTY_USER,
+      user_id: uid,
+      nama: fullName || uname || `User ${uid}`,
+      username: uname,
+      foto: tgUser.photo_url || '',
+      coin: initialIsOwner ? 999999999 : 1000,
+      border_saat_ini: initialIsOwner ? 'faiz-ganteng' : 'pemula',
+      custom_text: initialIsOwner ? 'FAIZ GANTENG' : '',
+    };
+  }, [tgUser, initialIsOwner]);
 
   const [isLoading, setIsLoading] = useState<boolean>(isTelegramAuthenticated);
-  const [currentUser, setCurrentUser] = useState<UserProfile>(EMPTY_USER);
+  const [currentUser, setCurrentUser] = useState<UserProfile>(initialUser);
   const [allUsers, setAllUsers] = useState<UserProfile[]>([]);
-  const [userOwnedBorders, setUserOwnedBorders] = useState<string[]>(['pemula']);
+  const [userOwnedBorders, setUserOwnedBorders] = useState<string[]>(
+    initialIsOwner ? ALL_BORDERS.map((b) => b.id) : ['pemula']
+  );
   const [onlineCount, setOnlineCount] = useState<number>(1);
 
   const [activeTab, setActiveTab] = useState<AppTab>('beranda');
@@ -158,6 +181,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const [dailyMissions, setDailyMissions] = useState<DailyMission[]>([]);
   const [rouletteSpunToday, setRouletteSpunToday] = useState<boolean>(false);
   const [rouletteWinners, setRouletteWinners] = useState<RouletteWinner[]>([]);
+  const [giftQueue, setGiftQueue] = useState<GiftEventPayload[]>([]);
 
   // Global modals
   const [activeBroadcastPopup, setActiveBroadcastPopup] = useState<Broadcast | null>(null);
@@ -175,11 +199,35 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }
   }, []);
 
-  const isOwner = useMemo(() => isOwnerUsername(currentUser.username), [currentUser.username]);
+  const isOwner = useMemo(
+    () => isOwnerUsername(currentUser.username) || isOwnerUsername(tgUser?.username),
+    [currentUser.username, tgUser?.username]
+  );
+  const effectiveUserOwnedBorders = useMemo(
+    () => (isOwner ? ALL_BORDERS.map((b) => b.id) : userOwnedBorders),
+    [isOwner, userOwnedBorders]
+  );
   const currentRoom = useMemo(
     () => rooms.find((r) => r.id === currentRoomId) || null,
     [rooms, currentRoomId]
   );
+
+  const currentRoomIdRef = useRef<string | null>(null);
+  useEffect(() => {
+    currentRoomIdRef.current = currentRoomId;
+  }, [currentRoomId]);
+
+  const seenGiftIdsRef = useRef<Set<string>>(new Set());
+  const enqueueGiftEvent = useCallback((giftEvent: GiftEventPayload) => {
+    if (!giftEvent?.id) return;
+    if (seenGiftIdsRef.current.has(giftEvent.id)) return;
+    seenGiftIdsRef.current.add(giftEvent.id);
+    setGiftQueue((prev) => [...prev, giftEvent]);
+  }, []);
+
+  const dismissGiftEvent = useCallback((eventId: string) => {
+    setGiftQueue((prev) => prev.filter((g) => g.id !== eventId));
+  }, []);
 
   const setCurrentRoom = useCallback((room: Room | null) => {
     setCurrentRoomId(room ? room.id : null);
@@ -197,8 +245,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     let cancelled = false;
     let ws: WebSocket | null = null;
     let reconnectTimer: number | null = null;
+    let retryTimer: number | null = null;
+    let hasSynced = false;
 
-    const syncFromServer = async () => {
+    const syncFromServer = async (attempt = 0) => {
       try {
         const res = await fetch('/api/auth/sync', {
           method: 'POST',
@@ -214,9 +264,18 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         const data = await res.json();
         if (cancelled) return;
 
-        setCurrentUser(data.profile);
+        hasSynced = true;
+        const syncedProfile: UserProfile = data.profile;
+        if (isOwnerUsername(syncedProfile?.username)) {
+          syncedProfile.coin = 999999999;
+        }
+        setCurrentUser(syncedProfile);
         setAllUsers(data.allUsers || []);
-        setUserOwnedBorders(data.ownedBorders || ['pemula']);
+        setUserOwnedBorders(
+          isOwnerUsername(syncedProfile?.username)
+            ? ALL_BORDERS.map((b) => b.id)
+            : data.ownedBorders || ['pemula']
+        );
         setRooms(data.rooms || []);
         setChatsMap(data.chats || {});
         setBroadcasts(data.broadcasts || []);
@@ -230,10 +289,14 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         setRouletteSpunToday(Boolean(data.rouletteSpunToday));
         setRouletteWinners(data.rouletteWinners || []);
         setOnlineCount(data.onlineCount || 1);
+        setIsLoading(false);
       } catch (e) {
         console.error('Server sync error:', e);
-      } finally {
-        if (!cancelled) setIsLoading(false);
+        if (!cancelled && attempt < 5) {
+          retryTimer = window.setTimeout(() => syncFromServer(attempt + 1), 1500);
+        } else if (!cancelled) {
+          setIsLoading(false);
+        }
       }
     };
 
@@ -245,6 +308,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
       ws.onopen = () => {
         ws?.send(JSON.stringify({ type: 'IDENTIFY', userId: uid }));
+        if (!hasSynced) {
+          syncFromServer(0);
+        }
       };
 
       ws.onmessage = (event) => {
@@ -389,6 +455,32 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
               break;
             }
 
+            case 'GIFT_SENT': {
+              const { giftEvent } = payload as { giftEvent: GiftEventPayload };
+              if (giftEvent && currentRoomIdRef.current === giftEvent.room_id) {
+                enqueueGiftEvent(giftEvent);
+                sounds.playTing();
+              }
+              break;
+            }
+
+            case 'GIFT_RECEIVED': {
+              const { toUserId, fromUsername, giftNama, amount, hostHistory } = payload as {
+                toUserId: string;
+                fromUsername: string;
+                giftNama: string;
+                amount: number;
+                hostHistory: CoinHistoryItem[];
+              };
+              if (toUserId === uid) {
+                setCoinHistory(hostHistory || []);
+                sounds.playTing();
+                triggerHaptic('success');
+                setToast(`🎁 Lu dapet hadiah ${giftNama} (+${amount} Coin) dari @${fromUsername}!`);
+              }
+              break;
+            }
+
             case 'POLL_UPDATED': {
               const { roomId, poll } = payload as { roomId: string; poll: Poll };
               setPolls((prev) => ({ ...prev, [roomId]: poll }));
@@ -442,6 +534,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     return () => {
       cancelled = true;
       if (reconnectTimer) window.clearTimeout(reconnectTimer);
+      if (retryTimer) window.clearTimeout(retryTimer);
       ws?.close();
     };
   }, [tgUser, setToast]);
@@ -690,37 +783,41 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }
   }, [api, currentRoom, currentUser.user_id, setToast]);
 
-  const sendFreeGift = useCallback(async (giftName: string) => {
-    if (!currentRoom) return;
-    const isBig = giftName.includes('Mahkota');
+  const sendGift = useCallback(async (giftId: string) => {
+    if (!currentRoom) return { success: false, message: 'Masuk room dulu bro!' };
     const uniqueId = `gift-${currentUser.user_id}-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
-    const text = isBig
-      ? `${currentUser.nama} nyawer ${giftName} ke Host ${currentRoom.host_nama}! Gila!`
-      : `${currentUser.nama} nyawer ${giftName} ke Host ${currentRoom.host_nama}!`;
 
     try {
-      const data = await api(`/api/rooms/${currentRoom.id}/chats`, {
+      const data = await api(`/api/rooms/${currentRoom.id}/gifts`, {
         method: 'POST',
         body: JSON.stringify({
           id: uniqueId,
           user_id: currentUser.user_id,
-          pesan: text,
-          is_gift: true,
-          gift_nama: giftName,
+          gift_id: giftId,
         }),
       });
+      if (data.profile) setCurrentUser(data.profile);
+      if (data.coinHistory) setCoinHistory(data.coinHistory);
       if (data.missions) setDailyMissions(data.missions);
-      setChatsMap((prev) => {
-        const list = prev[currentRoom.id] || [];
-        if (list.some((m) => m.id === data.message.id)) return prev;
-        return { ...prev, [currentRoom.id]: [...list, data.message] };
-      });
+      if (data.message) {
+        setChatsMap((prev) => {
+          const list = prev[currentRoom.id] || [];
+          if (list.some((m) => m.id === data.message.id)) return prev;
+          return { ...prev, [currentRoom.id]: [...list, data.message] };
+        });
+      }
+      if (data.giftEvent) {
+        enqueueGiftEvent(data.giftEvent);
+      }
       sounds.playTing();
       triggerHaptic('success');
+      return { success: true, message: 'Gift terkirim!' };
     } catch (e) {
-      setToast(e instanceof Error ? e.message : 'Gagal kirim gift!');
+      const msg = e instanceof Error ? e.message : 'Gagal kirim gift!';
+      setToast(msg);
+      return { success: false, message: msg };
     }
-  }, [api, currentRoom, currentUser.nama, currentUser.user_id, setToast]);
+  }, [api, currentRoom, currentUser.user_id, enqueueGiftEvent, setToast]);
 
   const createPoll = useCallback(async (pertanyaan: string, pilihanText: string[]) => {
     if (!currentRoom) return;
@@ -1268,7 +1365,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         broadcasts,
         dailyMissions,
         coinHistory,
-        userOwnedBorders,
+        userOwnedBorders: effectiveUserOwnedBorders,
         rouletteSpunToday,
         rouletteWinners,
 
@@ -1281,7 +1378,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         reactToChat,
         markChatsRead,
         deleteChatMessage,
-        sendFreeGift,
+        sendGift,
+        giftQueue,
+        dismissGiftEvent,
         createPoll,
         votePoll,
         createQuiz,

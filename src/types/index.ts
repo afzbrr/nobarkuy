@@ -83,11 +83,30 @@ export interface ChatMessage {
   reactions?: Record<string, ChatReactionUser[]>;
   read_by?: ChatReadReceipt[];
   is_gift?: boolean;
+  gift_id?: string;
   gift_nama?: string;
+  gift_harga?: number;
   is_host?: boolean;
   is_owner?: boolean;
   is_system?: boolean;
   is_broadcast?: boolean;
+  created_at: string;
+}
+
+export interface GiftEventPayload {
+  id: string;
+  room_id: string;
+  gift_id: string;
+  gift_nama: string;
+  gift_emoji: string;
+  gift_harga: number;
+  sender_id: string;
+  sender_nama: string;
+  sender_username: string;
+  sender_foto: string;
+  sender_border: string;
+  host_id: string;
+  host_nama: string;
   created_at: string;
 }
 
@@ -225,6 +244,7 @@ export interface BorderDefinition {
   hasShimmer?: boolean;
   cornerSticker?: string;
   topBadge?: string;
+  themeStyle?: 'default' | 'pinky' | 'cyber' | 'fire' | 'purple' | 'indonesia' | 'space' | 'ice' | 'aurora' | 'owner';
   bisaDihias: boolean;
 }
 

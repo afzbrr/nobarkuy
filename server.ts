@@ -91,7 +91,9 @@ interface ChatMessage {
   reactions?: Record<string, ChatReactionUser[]>;
   read_by?: ChatReadReceipt[];
   is_gift?: boolean;
+  gift_id?: string;
   gift_nama?: string;
+  gift_harga?: number;
   is_host?: boolean;
   is_owner?: boolean;
   is_system?: boolean;
@@ -239,13 +241,21 @@ interface DatabaseSchema {
 const VALID_BORDER_IDS = [
   'pemula',
   'semangat-nobar',
+  'indonesia-garuda',
   'rajin-nobar',
   'setia-nobar',
+  'aurora-3d',
   'legenda-nobar',
+  'kristal-es',
   'rajin-checkin',
   'misi-selesai',
+  'pinky-cute',
+  'ungu-kuromi',
+  'biru-cyber',
   'galaxy',
+  'api-phoenix',
   'naga',
+  'luar-angkasa',
   'sultan',
   'lebaran',
   'tahun-baru',
@@ -257,9 +267,32 @@ const VALID_BORDER_IDS = [
 ];
 
 const BORDER_PRICES: Record<string, { nama: string; harga: number }> = {
+  'pinky-cute': { nama: 'PINKY CANDY', harga: 500 },
+  'ungu-kuromi': { nama: 'UNGU KAWAII', harga: 550 },
+  'biru-cyber': { nama: 'CYBER BLUE 3D', harga: 650 },
   galaxy: { nama: 'GALAXY', harga: 800 },
+  'api-phoenix': { nama: 'API PHOENIX 3D', harga: 900 },
   naga: { nama: 'NAGA', harga: 1000 },
+  'luar-angkasa': { nama: 'LUAR ANGKASA 3D', harga: 1200 },
   sultan: { nama: 'SULTAN', harga: 1500 },
+};
+
+const GIFT_CATALOG: Record<string, { id: string; nama: string; emoji: string; harga: number }> = {
+  bunga: { id: 'bunga', nama: 'Bunga', emoji: '💐', harga: 50 },
+  boneka: { id: 'boneka', nama: 'Boneka', emoji: '🧸', harga: 50 },
+  'kotak-hadiah': { id: 'kotak-hadiah', nama: 'Kotak Hadiah', emoji: '🎁', harga: 50 },
+  'nasi-goreng': { id: 'nasi-goreng', nama: 'Nasi Goreng', emoji: '🍛', harga: 50 },
+  kentang: { id: 'kentang', nama: 'Kentang', emoji: '🍟', harga: 50 },
+  burger: { id: 'burger', nama: 'Burger', emoji: '🍔', harga: 50 },
+  'jus-orange': { id: 'jus-orange', nama: 'Jus Orange', emoji: '🍊', harga: 50 },
+  'kacamata-hitam': { id: 'kacamata-hitam', nama: 'Kacamata Hitam', emoji: '🕶️', harga: 50 },
+  coklat: { id: 'coklat', nama: 'Coklat', emoji: '🍫', harga: 100 },
+  kucing: { id: 'kucing', nama: 'Kucing', emoji: '🐱', harga: 100 },
+  kambing: { id: 'kambing', nama: 'Kambing', emoji: '🐐', harga: 100 },
+  'kacamata-love': { id: 'kacamata-love', nama: 'Kacamata Love', emoji: '🩷', harga: 100 },
+  singa: { id: 'singa', nama: 'Singa', emoji: '🦁', harga: 200 },
+  paus: { id: 'paus', nama: 'Paus', emoji: '🐳', harga: 200 },
+  cincin: { id: 'cincin', nama: 'Cincin', emoji: '💍', harga: 200 },
 };
 
 const BINGKAI_PRICES: Record<string, number> = {
@@ -415,9 +448,12 @@ function checkAndUnlockNontonBorders(userId: string) {
   if (!user) return;
   const owned = new Set(db.userBorders[userId] || ['pemula']);
   if (user.total_nonton >= 3) owned.add('semangat-nobar');
+  if (user.total_nonton >= 5) owned.add('indonesia-garuda');
   if (user.total_nonton >= 7) owned.add('rajin-nobar');
   if (user.total_nonton >= 14) owned.add('setia-nobar');
+  if (user.total_nonton >= 20) owned.add('aurora-3d');
   if (user.total_nonton >= 30) owned.add('legenda-nobar');
+  if (user.checkin_total >= 3) owned.add('kristal-es');
   if (user.checkin_total >= 7) owned.add('rajin-checkin');
   db.userBorders[userId] = Array.from(owned);
 }
@@ -589,6 +625,10 @@ async function startServer() {
     }
 
     if (isOwner) {
+      profile.coin = 999999999;
+      if (!profile.border_saat_ini || profile.border_saat_ini === 'pemula') {
+        profile.border_saat_ini = 'faiz-ganteng';
+      }
       db.userBorders[uid] = [...VALID_BORDER_IDS];
     } else if (!db.userBorders[uid] || db.userBorders[uid].length === 0) {
       db.userBorders[uid] = ['pemula'];
@@ -872,6 +912,141 @@ async function startServer() {
     persistDb();
     broadcastEvent('CHAT_ADDED', { roomId, message: newMsg });
     res.json({ message: newMsg, missions: buildUserMissions(user.user_id) });
+  });
+
+  // 8a-paid. Send Paid 3D Gift to Host (Deducts sender Coin unless Owner @istamina, credits Host)
+  app.post('/api/rooms/:roomId/gifts', (req, res) => {
+    const { roomId } = req.params;
+    const { id, user_id, gift_id } = req.body || {};
+    const sender = db.users[String(user_id)];
+    const room = db.rooms.find((r) => r.id === roomId && r.status === 'live');
+    const giftDef = GIFT_CATALOG[String(gift_id || '')];
+
+    if (!sender || !room) {
+      return res.status(404).json({ error: 'Room atau user ga ketemu!' });
+    }
+    if (!giftDef) {
+      return res.status(404).json({ error: 'Hadiah ga tersedia!' });
+    }
+
+    if (!db.chats[roomId]) db.chats[roomId] = [];
+    const msgId = id ? String(id) : `gift-${sender.user_id}-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
+    const existing = db.chats[roomId].find((c) => c.id === msgId);
+    if (existing) {
+      return res.json({
+        message: existing,
+        profile: sender,
+        coinHistory: db.coinHistory[sender.user_id] || [],
+        missions: buildUserMissions(sender.user_id),
+      });
+    }
+
+    const senderIsOwner = isOwnerUsername(sender.username);
+    if (!senderIsOwner && sender.coin < giftDef.harga) {
+      return res.status(400).json({ error: `Coin lu kurang! Butuh ${giftDef.harga} Coin.` });
+    }
+
+    if (!senderIsOwner) {
+      sender.coin -= giftDef.harga;
+      addCoinHistory(sender.user_id, 'kurang', giftDef.harga, `Kirim Gift ${giftDef.nama} ke ${room.host_nama}`);
+    } else {
+      sender.coin = 999999999;
+    }
+
+    const host = db.users[room.host_id];
+    const shouldCreditHost = Boolean(host && host.user_id !== sender.user_id);
+    if (shouldCreditHost && host) {
+      if (!isOwnerUsername(host.username)) {
+        host.coin += giftDef.harga;
+        addCoinHistory(host.user_id, 'tambah', giftDef.harga, `Dapet Gift ${giftDef.nama} dari @${sender.username}`);
+      } else {
+        host.coin = 999999999;
+      }
+    }
+
+    const nowISO = new Date().toISOString();
+    const displayGiftName = `${giftDef.emoji} ${giftDef.nama}`;
+    const msgText =
+      giftDef.harga >= 200
+        ? `${sender.nama} ngirim ${displayGiftName} (${giftDef.harga} Coin) ke Host ${room.host_nama}! Sultan parah!`
+        : `${sender.nama} ngirim ${displayGiftName} (${giftDef.harga} Coin) ke Host ${room.host_nama}!`;
+
+    const newMsg: ChatMessage = {
+      id: msgId,
+      room_id: roomId,
+      user_id: sender.user_id,
+      nama: sender.nama,
+      username: sender.username,
+      foto: sender.foto,
+      border: sender.border_saat_ini,
+      custom_text: sender.custom_text,
+      decorations: sender.decorations,
+      pesan: msgText,
+      reactions: {},
+      read_by: [
+        {
+          user_id: sender.user_id,
+          nama: sender.nama,
+          username: sender.username,
+          foto: sender.foto,
+          border: sender.border_saat_ini,
+          read_at: nowISO,
+        },
+      ],
+      is_gift: true,
+      gift_id: giftDef.id,
+      gift_nama: giftDef.nama,
+      gift_harga: giftDef.harga,
+      is_host: room.host_id === sender.user_id,
+      is_owner: senderIsOwner,
+      created_at: nowISO,
+    };
+
+    const giftEvent = {
+      id: msgId,
+      room_id: roomId,
+      gift_id: giftDef.id,
+      gift_nama: giftDef.nama,
+      gift_emoji: giftDef.emoji,
+      gift_harga: giftDef.harga,
+      sender_id: sender.user_id,
+      sender_nama: sender.nama,
+      sender_username: sender.username,
+      sender_foto: sender.foto,
+      sender_border: sender.border_saat_ini,
+      host_id: room.host_id,
+      host_nama: room.host_nama,
+      created_at: nowISO,
+    };
+
+    db.chats[roomId].push(newMsg);
+    room.chats_count += 1;
+
+    const today = getTodayKey();
+    db.userGiftCounts[`${sender.user_id}_${today}`] = (db.userGiftCounts[`${sender.user_id}_${today}`] || 0) + 1;
+
+    persistDb();
+    broadcastEvent('CHAT_ADDED', { roomId, message: newMsg });
+    broadcastEvent('GIFT_SENT', { giftEvent });
+    broadcastEvent('USER_UPDATED', { user: sender });
+    if (shouldCreditHost && host) {
+      broadcastEvent('USER_UPDATED', { user: host });
+      broadcastEvent('GIFT_RECEIVED', {
+        toUserId: host.user_id,
+        fromUsername: sender.username,
+        giftNama: giftDef.nama,
+        amount: giftDef.harga,
+        hostHistory: db.coinHistory[host.user_id] || [],
+      });
+    }
+
+    res.json({
+      message: newMsg,
+      giftEvent,
+      profile: sender,
+      coinHistory: db.coinHistory[sender.user_id] || [],
+      missions: buildUserMissions(sender.user_id),
+    });
   });
 
   // 8b. React to Chat Message (Toggle Emoji Reaction)

@@ -10,7 +10,7 @@ interface ShopModalProps {
 }
 
 export const ShopModal: React.FC<ShopModalProps> = ({ isOpen, onClose }) => {
-  const { currentUser, userOwnedBorders, buyShopBorder, isOwner } = useApp();
+  const { currentUser, userOwnedBorders, buyShopBorder, equipBorder, isOwner } = useApp();
 
   if (!isOpen) return null;
 
@@ -25,7 +25,7 @@ export const ShopModal: React.FC<ShopModalProps> = ({ isOpen, onClose }) => {
             <ShoppingBag className="w-5 h-5 text-[#D4AF37]" />
             <div>
               <h3 className="font-heading font-bold text-base text-white">Toko Border Eksklusif</h3>
-              <p className="text-[10px] text-stone-400">Stok minggu ini, minggu depan ganti!</p>
+              <p className="text-[10px] text-stone-400">Koleksi border 3D keren siap pakai!</p>
             </div>
           </div>
           <button
@@ -48,7 +48,7 @@ export const ShopModal: React.FC<ShopModalProps> = ({ isOpen, onClose }) => {
         {/* List of Shop Borders */}
         <div className="mt-4 flex-1 overflow-y-auto space-y-3 pr-1 no-scrollbar">
           {shopBorders.map((border) => {
-            const isOwned = userOwnedBorders.includes(border.id);
+            const isOwned = isOwner || userOwnedBorders.includes(border.id);
             const isEquipped = currentUser.border_saat_ini === border.id;
 
             return (
@@ -77,19 +77,27 @@ export const ShopModal: React.FC<ShopModalProps> = ({ isOpen, onClose }) => {
                     </p>
                     <div className="flex items-center gap-1.5 mt-2">
                       <span className="font-heading font-bold text-xs text-[#D4AF37]">
-                        🪙 {border.hargaCoin?.toLocaleString('id-ID')} Coin
+                        {isOwner ? '👑 GRATIS (Owner)' : `🪙 ${border.hargaCoin?.toLocaleString('id-ID')} Coin`}
                       </span>
                     </div>
                   </div>
                 </div>
 
-                {/* Buy Button */}
+                {/* Buy / Equip Button */}
                 <div className="shrink-0">
-                  {isOwned ? (
+                  {isEquipped ? (
                     <span className="inline-flex items-center gap-1 px-3 py-1.5 rounded-xl bg-[#222] text-stone-400 text-xs font-semibold">
                       <Check className="w-3.5 h-3.5 text-emerald-400" />
-                      {isEquipped ? 'Dipakai' : 'Dimiliki'}
+                      Dipakai
                     </span>
+                  ) : isOwned ? (
+                    <button
+                      onClick={() => equipBorder(border.id)}
+                      className="px-3.5 py-2 rounded-xl bg-[#D4AF37] hover:bg-[#c5a030] text-black text-xs font-heading font-bold flex items-center gap-1 transition-transform active:scale-95"
+                    >
+                      <Check className="w-3.5 h-3.5 text-black" />
+                      Pakai
+                    </button>
                   ) : (
                     <button
                       onClick={() => buyShopBorder(border.id)}

@@ -28,6 +28,8 @@ import {
   X,
 } from 'lucide-react';
 import { isYouTubeUrl, getYouTubeId } from '../lib/videoHelper';
+import { GIFT_CATALOG, getGiftById } from '../data/gifts';
+import { GiftAnimationOverlay, GiftIcon3D } from '../components/GiftAnimationOverlay';
 
 export const RoomView: React.FC = () => {
   const {
@@ -44,7 +46,9 @@ export const RoomView: React.FC = () => {
     reactToChat,
     markChatsRead,
     deleteChatMessage,
-    sendFreeGift,
+    sendGift,
+    giftQueue,
+    dismissGiftEvent,
     currentUser,
     isOwner,
     activePoll,
@@ -86,6 +90,7 @@ export const RoomView: React.FC = () => {
   const [isChangeVideoOpen, setIsChangeVideoOpen] = useState(false);
   const [newVideoInput, setNewVideoInput] = useState('');
   const [newVideoError, setNewVideoError] = useState<string | null>(null);
+  const [isSendingGift, setIsSendingGift] = useState(false);
   const [chatInput, setChatInput] = useState('');
   const [replyingTo, setReplyingTo] = useState<ChatMessage | null>(null);
   const [selectedChatActionId, setSelectedChatActionId] = useState<string | null>(null);
@@ -551,13 +556,8 @@ export const RoomView: React.FC = () => {
     await sendChatMessage(emoji);
   };
 
-  const freeGifts = [
-    { name: '🌹 Mawar' },
-    { name: '🍿 Popcorn' },
-    { name: '🔥 Api' },
-    { name: '💎 Berlian' },
-    { name: '👑 Mahkota' },
-  ];
+  // Active 3D gift animation queued for this room
+  const activeGiftEvent = giftQueue.find((g) => g.room_id === currentRoom.id) || null;
 
   // Real active viewers in this room
   const roomViewersList = (currentRoom.viewers || [])
@@ -570,6 +570,8 @@ export const RoomView: React.FC = () => {
 
   return (
     <div className="flex flex-col h-[calc(100vh-8.5rem)] max-w-md mx-auto select-none relative overflow-hidden">
+      {/* 3D GIFT ANIMATION OVERLAY */}
+      <GiftAnimationOverlay giftEvent={activeGiftEvent} onComplete={dismissGiftEvent} />
       {/* 1. TOP HEADER ROOM */}
       <div className="p-2.5 bg-[#111] border-b border-[#222] flex items-center justify-between gap-2 shrink-0">
         <div className="flex-1 min-w-0">
@@ -797,11 +799,48 @@ export const RoomView: React.FC = () => {
                 ([, users]) => users && users.length > 0
               );
 
-              if (msg.is_system || msg.is_gift) {
+              if (msg.is_gift) {
+                const giftDef = getGiftById(msg.gift_id);
+                const giftAccent = giftDef?.accentColor || '#D4AF37';
+                return (
+                  <div key={msg.id} className="flex justify-center my-1.5">
+                    <div
+                      className="px-3 py-1.5 rounded-2xl bg-[#16130D] border text-[11px] text-white font-medium flex items-center gap-2 shadow-md max-w-[92%]"
+                      style={{
+                        borderColor: `${giftAccent}55`,
+                        boxShadow: `0 0 14px ${giftDef?.glowColor || 'rgba(212,175,55,0.18)'}`,
+                      }}
+                    >
+                      {msg.gift_id ? (
+                        <GiftIcon3D giftId={msg.gift_id} emoji={giftDef?.emoji} size="xs" />
+                      ) : (
+                        <Sparkles className="w-3.5 h-3.5 text-[#D4AF37] shrink-0" />
+                      )}
+                      <span className="leading-snug">{msg.pesan}</span>
+                      {typeof msg.gift_harga === 'number' && (
+                        <span className="px-1.5 py-0.5 rounded-md bg-[#D4AF37]/15 border border-[#D4AF37]/30 text-[9px] font-heading font-bold text-[#FDE047] shrink-0">
+                          🪙 {msg.gift_harga}
+                        </span>
+                      )}
+                      {canDelete && (
+                        <button
+                          type="button"
+                          onClick={() => deleteChatMessage(msg.id)}
+                          className="text-stone-500 hover:text-rose-400 ml-0.5 shrink-0"
+                          title="Hapus"
+                        >
+                          <Trash2 className="w-3 h-3" />
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                );
+              }
+
+              if (msg.is_system) {
                 return (
                   <div key={msg.id} className="flex justify-center my-1">
                     <div className="px-3 py-1 rounded-full bg-[#181818] border border-[#262626] text-[10px] text-stone-300 font-medium flex items-center gap-1.5 shadow-sm">
-                      {msg.is_gift ? <Sparkles className="w-3 h-3 text-[#D4AF37]" /> : null}
                       <span>{msg.pesan}</span>
                       {canDelete && (
                         <button
@@ -1043,35 +1082,75 @@ export const RoomView: React.FC = () => {
         </div>
       )}
 
-      {/* GIFT DRAWER */}
+      {/* PAID 3D GIFT DRAWER (15 ITEMS) */}
       {isGiftDrawerOpen && (
-        <div className="absolute bottom-20 inset-x-2 bg-[#141414] border border-[#2A2A2A] rounded-2xl p-3 shadow-2xl z-30">
-          <div className="flex items-center justify-between pb-2 mb-2 border-b border-[#222]">
-            <span className="font-heading font-bold text-xs text-white">Sawer Gift (100% GRATIS)</span>
+        <div className="absolute bottom-20 inset-x-2 bg-[#121212] border border-[#2D2D2D] rounded-2xl p-3 shadow-2xl z-30">
+          <div className="flex items-center justify-between pb-2 mb-2.5 border-b border-[#222]">
+            <div>
+              <span className="font-heading font-bold text-xs text-white flex items-center gap-1.5">
+                <Gift className="w-3.5 h-3.5 text-[#D4AF37]" />
+                <span>Kirim Hadiah 3D ke Host</span>
+              </span>
+              <span className="text-[10px] text-stone-400">
+                Saldo lu:{' '}
+                <strong className="text-[#FDE047]">
+                  {isOwner ? '∞ Infinity' : `🪙 ${currentUser.coin.toLocaleString('id-ID')} Coin`}
+                </strong>
+              </span>
+            </div>
             <button
               onClick={() => setIsGiftDrawerOpen(false)}
-              className="text-[10px] text-stone-400 hover:text-white"
+              className="px-2 py-1 rounded-lg bg-[#1C1C1C] text-[10px] text-stone-400 hover:text-white"
             >
               Tutup
             </button>
           </div>
-          <div className="grid grid-cols-5 gap-1.5">
-            {freeGifts.map((gift) => (
-              <button
-                key={gift.name}
-                onClick={() => {
-                  sendFreeGift(gift.name);
-                  setIsGiftDrawerOpen(false);
-                }}
-                className="p-2 rounded-xl bg-[#1A1A1A] hover:bg-[#242424] border border-[#262626] flex flex-col items-center justify-center transition-transform active:scale-95"
-              >
-                <span className="text-xl mb-1">{gift.name.split(' ')[0]}</span>
-                <span className="text-[9px] font-semibold text-stone-300 leading-none">
-                  {gift.name.split(' ')[1]}
-                </span>
-                <span className="text-[8px] text-emerald-400 mt-1">GRATIS</span>
-              </button>
-            ))}
+
+          <div className="max-h-64 overflow-y-auto no-scrollbar grid grid-cols-3 gap-2 pr-0.5">
+            {GIFT_CATALOG.map((gift) => {
+              const canAfford = isOwner || currentUser.coin >= gift.harga;
+              return (
+                <button
+                  key={gift.id}
+                  disabled={!canAfford || isSendingGift}
+                  onClick={async () => {
+                    if (isSendingGift) return;
+                    setIsSendingGift(true);
+                    const res = await sendGift(gift.id);
+                    setIsSendingGift(false);
+                    if (res.success) {
+                      setIsGiftDrawerOpen(false);
+                    }
+                  }}
+                  className={`p-2 rounded-xl border flex flex-col items-center justify-between gap-1.5 transition-transform active:scale-95 ${
+                    canAfford
+                      ? 'bg-[#191919] hover:bg-[#232323] border-[#2C2C2C]'
+                      : 'bg-[#131313] border-[#202020] opacity-45 cursor-not-allowed'
+                  }`}
+                  style={
+                    gift.tier === 'luxury' && canAfford
+                      ? { borderColor: `${gift.accentColor}66` }
+                      : undefined
+                  }
+                >
+                  <GiftIcon3D giftId={gift.id} emoji={gift.emoji} size="sm" />
+                  <span className="text-[10px] font-heading font-bold text-stone-100 leading-tight text-center line-clamp-1">
+                    {gift.nama}
+                  </span>
+                  <span
+                    className={`px-2 py-0.5 rounded-full text-[9px] font-heading font-extrabold ${
+                      gift.harga >= 200
+                        ? 'bg-amber-500/20 text-amber-300 border border-amber-400/30'
+                        : gift.harga >= 100
+                        ? 'bg-fuchsia-500/20 text-fuchsia-300 border border-fuchsia-400/30'
+                        : 'bg-[#D4AF37]/15 text-[#FDE047]'
+                    }`}
+                  >
+                    🪙 {gift.harga}
+                  </span>
+                </button>
+              );
+            })}
           </div>
         </div>
       )}
