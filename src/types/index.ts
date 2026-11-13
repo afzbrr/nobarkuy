@@ -26,6 +26,7 @@ export interface UserProfile {
   created_at: string;
   decorations: BorderDecorations;
   votes_count: number;
+  is_banned?: boolean;
 }
 
 export interface Room {
@@ -262,5 +263,52 @@ export interface CoinHistoryItem {
   jenis: 'tambah' | 'kurang';
   jumlah: number;
   keterangan: string;
+  created_at: string;
+}
+
+export interface FeedPost {
+  id: string;
+  user_id: string;
+  nama: string;
+  username: string;
+  foto_profil: string;
+  border: string;
+  custom_text?: string;
+  image_url: string;
+  caption: string;
+  tag: string;
+  likes_count: number;
+  comments_count: number;
+  is_pinned: boolean;
+  reports_count: number;
+  reported_by: string[];
+  is_hidden: boolean;
+  created_at: string;
+}
+
+export interface FeedLike {
+  id: string;
+  post_id: string;
+  user_id: string;
+  nama: string;
+  username: string;
+  foto_profil: string;
+  border: string;
+  created_at: string;
+}
+
+export interface FeedComment {
+  id: string;
+  post_id: string;
+  user_id: string;
+  nama: string;
+  username: string;
+  foto_profil: string;
+  border: string;
+  isi: string;
+  parent_id?: string | null;
+  reply_to_nama?: string | null;
+  likes_count: number;
+  liked_by: string[];
   created_at: string;
 }

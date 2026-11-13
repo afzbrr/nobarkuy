@@ -34,6 +34,7 @@ interface UserProfile {
   created_at: string;
   decorations: BorderDecorations;
   votes_count: number;
+  is_banned?: boolean;
 }
 
 interface Room {
@@ -216,6 +217,53 @@ interface CoinHistoryItem {
   created_at: string;
 }
 
+interface FeedPost {
+  id: string;
+  user_id: string;
+  nama: string;
+  username: string;
+  foto_profil: string;
+  border: string;
+  custom_text?: string;
+  image_url: string;
+  caption: string;
+  tag: string;
+  likes_count: number;
+  comments_count: number;
+  is_pinned: boolean;
+  reports_count: number;
+  reported_by: string[];
+  is_hidden: boolean;
+  created_at: string;
+}
+
+interface FeedLike {
+  id: string;
+  post_id: string;
+  user_id: string;
+  nama: string;
+  username: string;
+  foto_profil: string;
+  border: string;
+  created_at: string;
+}
+
+interface FeedComment {
+  id: string;
+  post_id: string;
+  user_id: string;
+  nama: string;
+  username: string;
+  foto_profil: string;
+  border: string;
+  isi: string;
+  parent_id?: string | null;
+  reply_to_nama?: string | null;
+  likes_count: number;
+  liked_by: string[];
+  created_at: string;
+}
+
 interface DatabaseSchema {
   users: Record<string, UserProfile>;
   userBorders: Record<string, string[]>;
@@ -236,6 +284,9 @@ interface DatabaseSchema {
   userGiftCounts: Record<string, number>;
   userPollVoteCounts: Record<string, number>;
   userTransferCounts: Record<string, number>;
+  posts: FeedPost[];
+  feedLikes: FeedLike[];
+  feedComments: FeedComment[];
 }
 
 const VALID_BORDER_IDS = [
@@ -362,7 +413,24 @@ function createEmptyDb(): DatabaseSchema {
     userGiftCounts: {},
     userPollVoteCounts: {},
     userTransferCounts: {},
+    posts: [],
+    feedLikes: [],
+    feedComments: [],
   };
+}
+
+const SERVER_BAD_WORDS = [
+  'anjing', 'anjir', 'anjay', 'babi', 'bangsat', 'bajingan', 'kontol',
+  'memek', 'ngentot', 'entot', 'jancok', 'jancuk', 'goblok', 'tolol',
+  'bego', 'idiot', 'tai', 'taek', 'bangke', 'keparat', 'brengsek',
+  'perek', 'lonte', 'pelacur', 'jalang', 'asu', 'jembut', 'titit',
+  'peler', 'pepek', 'pantek', 'pukimak', 'fuck', 'fucking', 'shit',
+  'bitch', 'asshole', 'dick', 'pussy', 'whore', 'slut', 'bastard', 'cunt',
+];
+const SERVER_BAD_WORDS_REGEX = new RegExp(`\\b(${SERVER_BAD_WORDS.join('|')})\\b`, 'gi');
+
+function filterKataKasarServer(text: string): string {
+  return String(text || '').replace(SERVER_BAD_WORDS_REGEX, '***');
 }
 
 function loadDb(): DatabaseSchema {
@@ -538,10 +606,54 @@ async function sendTelegramBroadcastNotification(judul: string, pesan: string) {
 
 async function startServer() {
   const app = express();
-  app.use(express.json({ limit: '2mb' }));
+  app.use(express.json({ limit: '10mb' }));
+  app.use(express.text({ type: 'text/plain', limit: '1mb' }));
 
   const server = http.createServer(app);
   const wss = new WebSocketServer({ server, path: '/ws' });
+  const disconnectTimers = new Map<string, NodeJS.Timeout>();
+
+  function deleteRoomCompletely(roomId: string) {
+    const existed = db.rooms.some((r) => r.id === roomId);
+    db.rooms = db.rooms.filter((r) => r.id !== roomId);
+    delete db.chats[roomId];
+    delete db.polls[roomId];
+    delete db.quizzes[roomId];
+    if (existed) {
+      persistDb();
+      broadcastEvent('ROOM_ENDED', { roomId });
+    }
+  }
+
+  function purgeExpiredBroadcasts(): boolean {
+    const now = Date.now();
+    const beforeLen = db.broadcasts.length;
+    db.broadcasts = db.broadcasts.filter((b) => {
+      if (!b.aktif_sampai) return true;
+      const exp = new Date(b.aktif_sampai).getTime();
+      return isNaN(exp) || exp > now;
+    });
+    if (db.broadcasts.length !== beforeLen) {
+      persistDb();
+      broadcastEvent('BROADCASTS_UPDATED', { broadcasts: db.broadcasts });
+      return true;
+    }
+    return false;
+  }
+
+  // Clean up expired broadcasts every 5 seconds
+  setInterval(() => {
+    purgeExpiredBroadcasts();
+  }, 5000);
+
+  function hasActiveSocket(userId: string): boolean {
+    for (const c of wsClients) {
+      if (c.ws.readyState === WebSocket.OPEN && c.userId === userId) {
+        return true;
+      }
+    }
+    return false;
+  }
 
   wss.on('connection', (ws) => {
     const meta: ClientMeta = { ws };
@@ -551,7 +663,13 @@ async function startServer() {
       try {
         const msg = JSON.parse(raw.toString());
         if (msg.type === 'IDENTIFY' && msg.userId) {
-          meta.userId = String(msg.userId);
+          const uid = String(msg.userId);
+          meta.userId = uid;
+          const pending = disconnectTimers.get(uid);
+          if (pending) {
+            clearTimeout(pending);
+            disconnectTimers.delete(uid);
+          }
           broadcastEvent('ONLINE_COUNT', { count: getOnlineUserCount() });
         }
       } catch {
@@ -562,11 +680,34 @@ async function startServer() {
     ws.on('close', () => {
       wsClients.delete(meta);
       broadcastEvent('ONLINE_COUNT', { count: getOnlineUserCount() });
+
+      const uid = meta.userId;
+      if (uid && !hasActiveSocket(uid)) {
+        const existing = disconnectTimers.get(uid);
+        if (existing) clearTimeout(existing);
+        const timer = setTimeout(() => {
+          disconnectTimers.delete(uid);
+          if (hasActiveSocket(uid)) return;
+          const affectedRooms = db.rooms.filter((r) => r.viewers.includes(uid));
+          affectedRooms.forEach((room) => {
+            room.viewers = room.viewers.filter((id) => id !== uid);
+            room.penonton_count = room.viewers.length;
+            if (room.viewers.length === 0) {
+              deleteRoomCompletely(room.id);
+            } else {
+              persistDb();
+              broadcastEvent('ROOM_UPDATED', { room });
+            }
+          });
+        }, 15000);
+        disconnectTimers.set(uid, timer);
+      }
     });
   });
 
   // Health check
   app.get('/api/health', (_req, res) => {
+    purgeExpiredBroadcasts();
     res.json({ ok: true, rooms: db.rooms.length, online: getOnlineUserCount() });
   });
 
@@ -634,6 +775,7 @@ async function startServer() {
       db.userBorders[uid] = ['pemula'];
     }
     checkAndUnlockNontonBorders(uid);
+    purgeExpiredBroadcasts();
 
     persistDb();
     broadcastEvent('USER_UPDATED', { user: profile });
@@ -643,7 +785,7 @@ async function startServer() {
       profile,
       allUsers: Object.values(db.users),
       ownedBorders: db.userBorders[uid],
-      rooms: db.rooms.filter((r) => r.status === 'live'),
+      rooms: db.rooms.filter((r) => r.status === 'live' && r.viewers.length > 0),
       chats: db.chats,
       broadcasts: db.broadcasts,
       giveaways: db.giveaways,
@@ -656,6 +798,9 @@ async function startServer() {
       missions: buildUserMissions(uid),
       rouletteSpunToday: Boolean(db.rouletteSpins[`${uid}_${today}`]),
       onlineCount: Math.max(1, getOnlineUserCount()),
+      posts: db.posts || [],
+      feedLikes: db.feedLikes || [],
+      feedComments: db.feedComments || [],
     });
   });
 
@@ -786,21 +931,35 @@ async function startServer() {
     });
   });
 
-  // 4. Leave Room
+  // 4. Leave Room (Auto-deletes room immediately if 0 viewers left!)
   app.post('/api/rooms/:roomId/leave', (req, res) => {
     const { roomId } = req.params;
-    const { user_id } = req.body || {};
+    let bodyObj: Record<string, unknown> = {};
+    if (typeof req.body === 'string') {
+      try {
+        bodyObj = JSON.parse(req.body);
+      } catch {
+        bodyObj = {};
+      }
+    } else if (req.body && typeof req.body === 'object') {
+      bodyObj = req.body;
+    }
+    const user_id = bodyObj.user_id;
     const room = db.rooms.find((r) => r.id === roomId);
     if (room && user_id) {
       room.viewers = room.viewers.filter((id) => id !== String(user_id));
       room.penonton_count = room.viewers.length;
-      persistDb();
-      broadcastEvent('ROOM_UPDATED', { room });
+      if (room.viewers.length === 0) {
+        deleteRoomCompletely(room.id);
+      } else {
+        persistDb();
+        broadcastEvent('ROOM_UPDATED', { room });
+      }
     }
     res.json({ ok: true });
   });
 
-  // 5. End / Delete Room (Host or Owner)
+  // 5. End / Delete Room (Selesai Nobar - Host clicks -> room immediately deleted!)
   app.post('/api/rooms/:roomId/end', (req, res) => {
     const { roomId } = req.params;
     const { user_id } = req.body || {};
@@ -808,11 +967,9 @@ async function startServer() {
     const room = db.rooms.find((r) => r.id === roomId);
     if (!room) return res.status(404).json({ error: 'Room ga ketemu!' });
     if (room.host_id !== String(user_id) && !isOwnerUsername(user?.username)) {
-      return res.status(403).json({ error: 'Cuma Host atau Owner yang bisa tutup room!' });
+      return res.status(403).json({ error: 'Cuma Host yang bisa selesain nobar!' });
     }
-    room.status = 'selesai';
-    persistDb();
-    broadcastEvent('ROOM_ENDED', { roomId });
+    deleteRoomCompletely(roomId);
     res.json({ ok: true });
   });
 
@@ -1575,14 +1732,26 @@ async function startServer() {
     return actor;
   }
 
-  // Broadcasts
+  // Broadcasts (with configurable expiry time -> auto-deletes when time is up)
   app.post('/api/owner/broadcasts', async (req, res) => {
     const actor = assertOwner(req, res);
     if (!actor) return;
-    const { jenis, judul, pesan, target, is_published } = req.body || {};
+    const { jenis, judul, pesan, target, is_published, aktif_sampai, durasi_menit } = req.body || {};
     if (!judul?.trim() || !pesan?.trim()) {
       return res.status(400).json({ error: 'Judul dan isi broadcast wajib diisi!' });
     }
+
+    let expiresAtMs = Date.now() + 60 * 60000;
+    if (aktif_sampai) {
+      const parsed = new Date(aktif_sampai).getTime();
+      if (isNaN(parsed) || parsed <= Date.now()) {
+        return res.status(400).json({ error: 'Waktu selesai broadcast harus di masa depan!' });
+      }
+      expiresAtMs = parsed;
+    } else if (durasi_menit && Number(durasi_menit) > 0) {
+      expiresAtMs = Date.now() + Number(durasi_menit) * 60000;
+    }
+
     const newBc: Broadcast = {
       id: `bc-${Date.now()}`,
       dibuat_oleh: actor.user_id,
@@ -1592,7 +1761,7 @@ async function startServer() {
       target: target || 'all',
       is_published: is_published !== false,
       created_at: new Date().toISOString(),
-      aktif_sampai: new Date(Date.now() + 7 * 86400000).toISOString(),
+      aktif_sampai: new Date(expiresAtMs).toISOString(),
     };
     db.broadcasts.unshift(newBc);
     persistDb();
@@ -1974,6 +2143,241 @@ async function startServer() {
       target.coin += amt;
       addCoinHistory(target.user_id, 'tambah', amt, 'Hadiah langsung dari Owner Faiz');
     }
+    persistDb();
+    broadcastEvent('USER_UPDATED', { user: target });
+    res.json({ user: target });
+  });
+
+  // 20. FEED KOMUNITAS ENDPOINTS (ZERO COIN FROM POST / LIKE / COMMENT)
+  app.get('/api/posts', (_req, res) => {
+    res.json({
+      posts: db.posts || [],
+      likes: db.feedLikes || [],
+      comments: db.feedComments || [],
+    });
+  });
+
+  app.post('/api/posts', (req, res) => {
+    const { user_id, image_url, caption, tag } = req.body || {};
+    const user = db.users[String(user_id)];
+    if (!user) return res.status(401).json({ error: 'User belum login!' });
+    if (user.is_banned) return res.status(403).json({ error: 'Akun lu lagi di-banned Owner!' });
+
+    const imgStr = String(image_url || '').trim();
+    if (!imgStr || imgStr.startsWith('data:video/')) {
+      return res.status(400).json({ error: 'Wajib upload foto (bukan video)!' });
+    }
+
+    const today = getTodayKey();
+    const todayCount = (db.posts || []).filter(
+      (p) => p.user_id === user.user_id && p.created_at.startsWith(today)
+    ).length;
+    if (!isOwnerUsername(user.username) && todayCount >= 3) {
+      return res.status(400).json({ error: 'Maksimal 3 post per hari udah tercapai! Besok lagi ya.' });
+    }
+
+    const cleanCaption = filterKataKasarServer(String(caption || '').trim());
+    const newPost: FeedPost = {
+      id: `post-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+      user_id: user.user_id,
+      nama: user.nama,
+      username: user.username,
+      foto_profil: user.foto,
+      border: user.border_saat_ini,
+      custom_text: user.custom_text,
+      image_url: imgStr,
+      caption: cleanCaption,
+      tag: String(tag || 'Nobar').trim() || 'Nobar',
+      likes_count: 0,
+      comments_count: 0,
+      is_pinned: false,
+      reports_count: 0,
+      reported_by: [],
+      is_hidden: false,
+      created_at: new Date().toISOString(),
+    };
+
+    if (!db.posts) db.posts = [];
+    db.posts.unshift(newPost);
+    persistDb();
+    broadcastEvent('POST_CREATED', { post: newPost });
+    res.json({ post: newPost });
+  });
+
+  app.delete('/api/posts/:postId', (req, res) => {
+    const { postId } = req.params;
+    const actorId = String(req.body?.user_id || req.query.user_id || '');
+    const actor = db.users[actorId];
+    const post = (db.posts || []).find((p) => p.id === postId);
+    if (!post) return res.status(404).json({ error: 'Postingan ga ketemu!' });
+    if (post.user_id !== actorId && !isOwnerUsername(actor?.username)) {
+      return res.status(403).json({ error: 'Lu ga berhak hapus postingan ini!' });
+    }
+
+    db.posts = (db.posts || []).filter((p) => p.id !== postId);
+    db.feedLikes = (db.feedLikes || []).filter((l) => l.post_id !== postId);
+    db.feedComments = (db.feedComments || []).filter((c) => c.post_id !== postId);
+    persistDb();
+    broadcastEvent('POST_DELETED', { postId });
+    res.json({ ok: true });
+  });
+
+  app.post('/api/posts/:postId/like', (req, res) => {
+    const { postId } = req.params;
+    const { user_id } = req.body || {};
+    const user = db.users[String(user_id)];
+    const post = (db.posts || []).find((p) => p.id === postId);
+    if (!user || !post) return res.status(404).json({ error: 'Postingan atau user ga ketemu!' });
+    if (user.is_banned) return res.status(403).json({ error: 'Akun lu lagi di-banned Owner!' });
+
+    if (!db.feedLikes) db.feedLikes = [];
+    const existingIdx = db.feedLikes.findIndex((l) => l.post_id === postId && l.user_id === user.user_id);
+    let liked = false;
+    if (existingIdx >= 0) {
+      db.feedLikes.splice(existingIdx, 1);
+      liked = false;
+    } else {
+      const newLike: FeedLike = {
+        id: `like-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+        post_id: postId,
+        user_id: user.user_id,
+        nama: user.nama,
+        username: user.username,
+        foto_profil: user.foto,
+        border: user.border_saat_ini,
+        created_at: new Date().toISOString(),
+      };
+      db.feedLikes.unshift(newLike);
+      liked = true;
+    }
+
+    const postLikes = db.feedLikes.filter((l) => l.post_id === postId);
+    post.likes_count = postLikes.length;
+    persistDb();
+    broadcastEvent('LIKE_UPDATED', { postId, likes_count: post.likes_count, postLikes });
+    res.json({ liked, likes_count: post.likes_count, postLikes });
+  });
+
+  app.post('/api/posts/:postId/comments', (req, res) => {
+    const { postId } = req.params;
+    const { user_id, isi, parent_id, reply_to_nama } = req.body || {};
+    const user = db.users[String(user_id)];
+    const post = (db.posts || []).find((p) => p.id === postId);
+    if (!user || !post) return res.status(404).json({ error: 'Postingan atau user ga ketemu!' });
+    if (user.is_banned) return res.status(403).json({ error: 'Akun lu lagi di-banned Owner!' });
+
+    const cleanIsi = filterKataKasarServer(String(isi || '').trim());
+    if (!cleanIsi) return res.status(400).json({ error: 'Komentar gaboleh kosong!' });
+
+    const newComment: FeedComment = {
+      id: `cmt-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+      post_id: postId,
+      user_id: user.user_id,
+      nama: user.nama,
+      username: user.username,
+      foto_profil: user.foto,
+      border: user.border_saat_ini,
+      isi: cleanIsi,
+      parent_id: parent_id || null,
+      reply_to_nama: reply_to_nama || null,
+      likes_count: 0,
+      liked_by: [],
+      created_at: new Date().toISOString(),
+    };
+
+    if (!db.feedComments) db.feedComments = [];
+    db.feedComments.push(newComment);
+    post.comments_count = db.feedComments.filter((c) => c.post_id === postId).length;
+    persistDb();
+    broadcastEvent('COMMENT_ADDED', { postId, comment: newComment, comments_count: post.comments_count });
+    res.json({ comment: newComment, comments_count: post.comments_count });
+  });
+
+  app.delete('/api/comments/:commentId', (req, res) => {
+    const { commentId } = req.params;
+    const actorId = String(req.body?.user_id || req.query.user_id || '');
+    const actor = db.users[actorId];
+    const comment = (db.feedComments || []).find((c) => c.id === commentId);
+    if (!comment) return res.status(404).json({ error: 'Komentar ga ketemu!' });
+    const post = (db.posts || []).find((p) => p.id === comment.post_id);
+    const canDelete =
+      comment.user_id === actorId ||
+      post?.user_id === actorId ||
+      isOwnerUsername(actor?.username);
+    if (!canDelete) return res.status(403).json({ error: 'Lu ga berhak hapus komentar ini!' });
+
+    const postId = comment.post_id;
+    db.feedComments = (db.feedComments || []).filter(
+      (c) => c.id !== commentId && c.parent_id !== commentId
+    );
+    const newCount = db.feedComments.filter((c) => c.post_id === postId).length;
+    if (post) post.comments_count = newCount;
+    persistDb();
+    broadcastEvent('COMMENT_DELETED', { postId, commentId, comments_count: newCount });
+    res.json({ ok: true, postId, comments_count: newCount });
+  });
+
+  app.post('/api/comments/:commentId/like', (req, res) => {
+    const { commentId } = req.params;
+    const { user_id } = req.body || {};
+    const user = db.users[String(user_id)];
+    const comment = (db.feedComments || []).find((c) => c.id === commentId);
+    if (!user || !comment) return res.status(404).json({ error: 'Komentar atau user ga ketemu!' });
+    if (user.is_banned) return res.status(403).json({ error: 'Akun lu lagi di-banned Owner!' });
+
+    if (!Array.isArray(comment.liked_by)) comment.liked_by = [];
+    if (comment.liked_by.includes(user.user_id)) {
+      comment.liked_by = comment.liked_by.filter((id) => id !== user.user_id);
+    } else {
+      comment.liked_by.push(user.user_id);
+    }
+    comment.likes_count = comment.liked_by.length;
+    persistDb();
+    broadcastEvent('COMMENT_UPDATED', { comment });
+    res.json({ comment });
+  });
+
+  app.post('/api/posts/:postId/report', (req, res) => {
+    const { postId } = req.params;
+    const { user_id } = req.body || {};
+    const user = db.users[String(user_id)];
+    const post = (db.posts || []).find((p) => p.id === postId);
+    if (!user || !post) return res.status(404).json({ error: 'Postingan ga ketemu!' });
+
+    if (!Array.isArray(post.reported_by)) post.reported_by = [];
+    if (post.reported_by.includes(user.user_id)) {
+      return res.status(400).json({ error: 'Lu udah pernah report postingan ini!' });
+    }
+    post.reported_by.push(user.user_id);
+    post.reports_count = post.reported_by.length;
+    if (post.reports_count >= 3) {
+      post.is_hidden = true;
+    }
+    persistDb();
+    broadcastEvent('POST_UPDATED', { post });
+    res.json({ post });
+  });
+
+  app.post('/api/owner/posts/:postId/pin', (req, res) => {
+    const actor = assertOwner(req, res);
+    if (!actor) return;
+    const post = (db.posts || []).find((p) => p.id === req.params.postId);
+    if (!post) return res.status(404).json({ error: 'Postingan ga ketemu!' });
+    post.is_pinned = !post.is_pinned;
+    persistDb();
+    broadcastEvent('POST_UPDATED', { post });
+    res.json({ post });
+  });
+
+  app.post('/api/owner/users/:targetUserId/ban', (req, res) => {
+    const actor = assertOwner(req, res);
+    if (!actor) return;
+    const target = db.users[req.params.targetUserId];
+    if (!target) return res.status(404).json({ error: 'User ga ketemu!' });
+    if (isOwnerUsername(target.username)) {
+      return res.status(400).json({ error: 'Gabisa ban Owner!' });
+    }
+    target.is_banned = !Boolean(target.is_banned);
     persistDb();
     broadcastEvent('USER_UPDATED', { user: target });
     res.json({ user: target });

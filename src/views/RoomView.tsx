@@ -596,27 +596,29 @@ export const RoomView: React.FC = () => {
 
         <div className="flex items-center gap-1 shrink-0">
           {(isHost || isOwner) && (
-            <>
-              <button
-                onClick={() => {
-                  setNewVideoError(null);
-                  setNewVideoInput(currentRoom.video_url);
-                  setIsChangeVideoOpen(true);
-                }}
-                className="px-2 py-1 rounded-lg bg-[#1F1C12] border border-[#D4AF37]/40 text-[#D4AF37] hover:bg-[#D4AF37]/20 text-[10px] font-semibold flex items-center gap-1 transition-colors"
-                title="Ganti Video YouTube"
-              >
-                <Film className="w-3 h-3" />
-                <span>Ganti</span>
-              </button>
-              <button
-                onClick={() => endRoom(currentRoom.id)}
-                className="p-1.5 rounded-lg bg-rose-500/15 border border-rose-500/30 text-rose-400 hover:bg-rose-500/25"
-                title="Tutup Room"
-              >
-                <Power className="w-3.5 h-3.5" />
-              </button>
-            </>
+            <button
+              onClick={() => {
+                setNewVideoError(null);
+                setNewVideoInput(currentRoom.video_url);
+                setIsChangeVideoOpen(true);
+              }}
+              className="px-2 py-1 rounded-lg bg-[#1F1C12] border border-[#D4AF37]/40 text-[#D4AF37] hover:bg-[#D4AF37]/20 text-[10px] font-semibold flex items-center gap-1 transition-colors"
+              title="Ganti Video YouTube"
+            >
+              <Film className="w-3 h-3" />
+              <span>Ganti</span>
+            </button>
+          )}
+
+          {isHost && (
+            <button
+              onClick={() => endRoom(currentRoom.id)}
+              className="px-2 py-1 rounded-lg bg-rose-500/20 border border-rose-500/40 text-rose-300 hover:bg-rose-500/30 text-[10px] font-heading font-bold flex items-center gap-1 transition-colors"
+              title="Selesai Nobar (Hapus Room Otomatis)"
+            >
+              <Power className="w-3 h-3" />
+              <span>Selesai Nobar</span>
+            </button>
           )}
 
           <button

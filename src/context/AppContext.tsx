@@ -15,10 +15,16 @@ import {
   GenreType,
   RouletteWinner,
   GiftEventPayload,
+  FeedPost,
+  FeedLike,
+  FeedComment,
 } from '../types';
 import { getTelegramUser, isOwnerUsername, triggerHaptic } from '../lib/telegram';
 import { ALL_BORDERS } from '../data/borders';
 import { sounds } from '../lib/sound';
+import { supabase, isSupabaseConfigured } from '../lib/supabaseClient';
+import { fetchFeedFromSupabase, subscribeFeedSupabaseRealtime } from '../lib/feedSupabase';
+import { filterKataKasar } from '../lib/feedHelpers';
 
 export type AppTab = 'beranda' | 'room' | 'coin_gratis' | 'leaderboard' | 'border' | 'profil' | 'owner_panel';
 
@@ -47,6 +53,9 @@ interface AppContextValue {
   userOwnedBorders: string[];
   rouletteSpunToday: boolean;
   rouletteWinners: RouletteWinner[];
+  posts: FeedPost[];
+  feedLikes: FeedLike[];
+  feedComments: FeedComment[];
 
   // Room & Chat actions
   joinRoom: (roomId: string, inputCode?: string) => Promise<{ success: boolean; message: string }>;
@@ -81,8 +90,19 @@ interface AppContextValue {
   equipBorder: (borderId: string) => Promise<void>;
   voteBorder: (targetUserId: string) => Promise<void>;
 
+  // Feed Komunitas (Supabase Realtime + Backend Sync, ZERO coin!)
+  createPost: (imageUrl: string, caption: string, tag: string) => Promise<{ success: boolean; message: string }>;
+  deletePost: (postId: string) => Promise<{ success: boolean; message: string }>;
+  toggleLikePost: (postId: string) => Promise<void>;
+  addPostComment: (postId: string, isi: string, parentId?: string | null, replyToNama?: string | null) => Promise<{ success: boolean; message: string }>;
+  deletePostComment: (commentId: string) => Promise<void>;
+  toggleLikeComment: (commentId: string) => Promise<void>;
+  reportPost: (postId: string) => Promise<void>;
+  togglePinPost: (postId: string) => Promise<void>;
+  toggleBanUser: (targetUserId: string) => Promise<void>;
+
   // Owner Panel Actions (@istamina ONLY)
-  createBroadcast: (jenis: Broadcast['jenis'], judul: string, pesan: string, target: Broadcast['target'], isPublished?: boolean) => Promise<void>;
+  createBroadcast: (jenis: Broadcast['jenis'], judul: string, pesan: string, target: Broadcast['target'], isPublished?: boolean, aktifSampai?: string) => Promise<void>;
   toggleBroadcastPublish: (id: string, isPublished: boolean) => Promise<void>;
   deleteBroadcast: (id: string) => Promise<void>;
   createGiveaway: (perOrang: number, jumlahOrang: number, mulaiPada: string, selesaiPada: string) => Promise<{ success: boolean; message: string }>;
@@ -182,6 +202,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const [rouletteSpunToday, setRouletteSpunToday] = useState<boolean>(false);
   const [rouletteWinners, setRouletteWinners] = useState<RouletteWinner[]>([]);
   const [giftQueue, setGiftQueue] = useState<GiftEventPayload[]>([]);
+  const [posts, setPosts] = useState<FeedPost[]>([]);
+  const [feedLikes, setFeedLikes] = useState<FeedLike[]>([]);
+  const [feedComments, setFeedComments] = useState<FeedComment[]>([]);
 
   // Global modals
   const [activeBroadcastPopup, setActiveBroadcastPopup] = useState<Broadcast | null>(null);
@@ -216,6 +239,55 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   useEffect(() => {
     currentRoomIdRef.current = currentRoomId;
   }, [currentRoomId]);
+
+  const allUsersMapRef = useRef<Record<string, UserProfile>>({});
+  useEffect(() => {
+    const map: Record<string, UserProfile> = {};
+    allUsers.forEach((u) => {
+      map[u.user_id] = u;
+    });
+    allUsersMapRef.current = map;
+  }, [allUsers]);
+
+  // Auto-leave room when user closes Mini App / browser tab so empty rooms delete immediately
+  useEffect(() => {
+    const handleLeaveOnExit = () => {
+      const rId = currentRoomIdRef.current;
+      const uid = currentUser.user_id;
+      if (rId && uid && typeof navigator.sendBeacon === 'function') {
+        navigator.sendBeacon(`/api/rooms/${rId}/leave`, JSON.stringify({ user_id: uid }));
+      }
+    };
+    window.addEventListener('pagehide', handleLeaveOnExit);
+    window.addEventListener('beforeunload', handleLeaveOnExit);
+    return () => {
+      window.removeEventListener('pagehide', handleLeaveOnExit);
+      window.removeEventListener('beforeunload', handleLeaveOnExit);
+    };
+  }, [currentUser.user_id]);
+
+  // Supabase Realtime Subscription for posts, comments, likes (when Supabase is configured)
+  const syncFeedFromSupabase = useCallback(async () => {
+    const sbData = await fetchFeedFromSupabase(allUsersMapRef.current);
+    if (sbData) {
+      setPosts(sbData.posts);
+      setFeedLikes(sbData.likes);
+      setFeedComments(sbData.comments);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (!isSupabaseConfigured) return;
+    syncFeedFromSupabase();
+    const unsub = subscribeFeedSupabaseRealtime({
+      onRefreshNeeded: () => {
+        syncFeedFromSupabase();
+      },
+    });
+    return () => {
+      unsub();
+    };
+  }, [syncFeedFromSupabase]);
 
   const seenGiftIdsRef = useRef<Set<string>>(new Set());
   const enqueueGiftEvent = useCallback((giftEvent: GiftEventPayload) => {
@@ -289,6 +361,13 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         setRouletteSpunToday(Boolean(data.rouletteSpunToday));
         setRouletteWinners(data.rouletteWinners || []);
         setOnlineCount(data.onlineCount || 1);
+        if (!isSupabaseConfigured) {
+          setPosts(data.posts || []);
+          setFeedLikes(data.feedLikes || []);
+          setFeedComments(data.feedComments || []);
+        } else {
+          syncFeedFromSupabase();
+        }
         setIsLoading(false);
       } catch (e) {
         console.error('Server sync error:', e);
@@ -512,6 +591,83 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
             case 'REDEEM_CODES_UPDATED':
               setRedeemCodes(payload.redeemCodes || []);
               break;
+
+            case 'POST_CREATED': {
+              const post: FeedPost = payload.post;
+              if (!post) break;
+              setPosts((prev) => (prev.some((p) => p.id === post.id) ? prev : [post, ...prev]));
+              break;
+            }
+
+            case 'POST_UPDATED': {
+              const post: FeedPost = payload.post;
+              if (!post) break;
+              setPosts((prev) => prev.map((p) => (p.id === post.id ? post : p)));
+              break;
+            }
+
+            case 'POST_DELETED': {
+              const deletedPostId: string = payload.postId;
+              setPosts((prev) => prev.filter((p) => p.id !== deletedPostId));
+              setFeedLikes((prev) => prev.filter((l) => l.post_id !== deletedPostId));
+              setFeedComments((prev) => prev.filter((c) => c.post_id !== deletedPostId));
+              break;
+            }
+
+            case 'LIKE_UPDATED': {
+              const { postId, likes_count, postLikes } = payload as {
+                postId: string;
+                likes_count: number;
+                postLikes: FeedLike[];
+              };
+              setPosts((prev) =>
+                prev.map((p) => (p.id === postId ? { ...p, likes_count } : p))
+              );
+              setFeedLikes((prev) => [
+                ...postLikes,
+                ...prev.filter((l) => l.post_id !== postId),
+              ]);
+              break;
+            }
+
+            case 'COMMENT_ADDED': {
+              const { postId, comment, comments_count } = payload as {
+                postId: string;
+                comment: FeedComment;
+                comments_count: number;
+              };
+              setFeedComments((prev) =>
+                prev.some((c) => c.id === comment.id) ? prev : [...prev, comment]
+              );
+              setPosts((prev) =>
+                prev.map((p) => (p.id === postId ? { ...p, comments_count } : p))
+              );
+              break;
+            }
+
+            case 'COMMENT_UPDATED': {
+              const { comment } = payload as { comment: FeedComment };
+              if (!comment) break;
+              setFeedComments((prev) =>
+                prev.map((c) => (c.id === comment.id ? comment : c))
+              );
+              break;
+            }
+
+            case 'COMMENT_DELETED': {
+              const { postId, commentId, comments_count } = payload as {
+                postId: string;
+                commentId: string;
+                comments_count: number;
+              };
+              setFeedComments((prev) =>
+                prev.filter((c) => c.id !== commentId && c.parent_id !== commentId)
+              );
+              setPosts((prev) =>
+                prev.map((p) => (p.id === postId ? { ...p, comments_count } : p))
+              );
+              break;
+            }
           }
         } catch {
           // ignore malformed frames
@@ -1133,18 +1289,401 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }
   }, [api, setToast]);
 
+  // FEED KOMUNITAS ACTIONS (Supabase Realtime + Backend Sync, ZERO COIN!)
+  const createPost = useCallback(async (imageUrl: string, caption: string, tag: string) => {
+    try {
+      if (currentUser.is_banned) {
+        const msg = 'Akun lu lagi kena banned, nggak bisa posting.';
+        setToast(msg);
+        return { success: false, message: msg };
+      }
+      const cleanCaption = filterKataKasar(caption.trim());
+      if (isSupabaseConfigured && supabase) {
+        const startOfToday = new Date();
+        startOfToday.setHours(0, 0, 0, 0);
+        const todayCount = posts.filter(
+          (p) => p.user_id === currentUser.user_id && new Date(p.created_at).getTime() >= startOfToday.getTime()
+        ).length;
+        if (!isOwner && todayCount >= 3) {
+          const msg = 'Maksimal 3 postingan per hari bro! Besok lagi ya.';
+          setToast(msg);
+          return { success: false, message: msg };
+        }
+        const newId = `post-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
+        const { error } = await supabase.from('posts').insert({
+          id: newId,
+          user_id: currentUser.user_id,
+          nama: currentUser.nama,
+          username: currentUser.username,
+          foto_profil: currentUser.foto,
+          border: currentUser.border_saat_ini,
+          custom_text: currentUser.custom_text,
+          image_url: imageUrl,
+          caption: cleanCaption,
+          tag,
+          likes_count: 0,
+          comments_count: 0,
+          is_pinned: false,
+          reports_count: 0,
+          reported_by: [],
+          is_hidden: false,
+        });
+        if (!error) {
+          await syncFeedFromSupabase();
+        }
+        await api('/api/posts', {
+          method: 'POST',
+          body: JSON.stringify({
+            user_id: currentUser.user_id,
+            image_url: imageUrl,
+            caption: cleanCaption,
+            tag,
+          }),
+        }).catch(() => null);
+      } else {
+        const data = await api('/api/posts', {
+          method: 'POST',
+          body: JSON.stringify({
+            user_id: currentUser.user_id,
+            image_url: imageUrl,
+            caption: cleanCaption,
+            tag,
+          }),
+        });
+        if (data.post) {
+          setPosts((prev) => (prev.some((p) => p.id === data.post.id) ? prev : [data.post, ...prev]));
+        }
+      }
+      sounds.playTing();
+      triggerHaptic('success');
+      setToast('Postingan berhasil diterbitkan!');
+      return { success: true, message: 'Berhasil posting!' };
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : 'Gagal bikin postingan!';
+      setToast(msg);
+      return { success: false, message: msg };
+    }
+  }, [api, currentUser, isOwner, posts, setToast, syncFeedFromSupabase]);
+
+  const deletePost = useCallback(async (postId: string) => {
+    try {
+      if (isSupabaseConfigured && supabase) {
+        await supabase.from('likes').delete().eq('post_id', postId);
+        await supabase.from('comments').delete().eq('post_id', postId);
+        await supabase.from('posts').delete().eq('id', postId);
+        await api(`/api/posts/${postId}?user_id=${encodeURIComponent(currentUser.user_id)}`, {
+          method: 'DELETE',
+          body: JSON.stringify({ user_id: currentUser.user_id }),
+        }).catch(() => null);
+      } else {
+        await api(`/api/posts/${postId}?user_id=${encodeURIComponent(currentUser.user_id)}`, {
+          method: 'DELETE',
+          body: JSON.stringify({ user_id: currentUser.user_id }),
+        });
+      }
+      setPosts((prev) => prev.filter((p) => p.id !== postId));
+      setFeedLikes((prev) => prev.filter((l) => l.post_id !== postId));
+      setFeedComments((prev) => prev.filter((c) => c.post_id !== postId));
+      setToast('Postingan berhasil dihapus!');
+      return { success: true, message: 'Terhapus!' };
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : 'Gagal hapus postingan!';
+      setToast(msg);
+      return { success: false, message: msg };
+    }
+  }, [api, currentUser.user_id, setToast]);
+
+  const toggleLikePost = useCallback(async (postId: string) => {
+    try {
+      if (isSupabaseConfigured && supabase) {
+        const existing = feedLikes.find((l) => l.post_id === postId && l.user_id === currentUser.user_id);
+        if (existing) {
+          await supabase.from('likes').delete().eq('post_id', postId).eq('user_id', currentUser.user_id);
+        } else {
+          await supabase.from('likes').insert({
+            id: `like-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+            post_id: postId,
+            user_id: currentUser.user_id,
+            nama: currentUser.nama,
+            username: currentUser.username,
+            foto_profil: currentUser.foto,
+            border: currentUser.border_saat_ini,
+          });
+        }
+        await syncFeedFromSupabase();
+        await api(`/api/posts/${postId}/like`, {
+          method: 'POST',
+          body: JSON.stringify({ user_id: currentUser.user_id }),
+        }).catch(() => null);
+      } else {
+        const data = await api(`/api/posts/${postId}/like`, {
+          method: 'POST',
+          body: JSON.stringify({ user_id: currentUser.user_id }),
+        });
+        if (data.postLikes) {
+          setPosts((prev) =>
+            prev.map((p) => (p.id === postId ? { ...p, likes_count: data.likes_count } : p))
+          );
+          setFeedLikes((prev) => [
+            ...data.postLikes,
+            ...prev.filter((l) => l.post_id !== postId),
+          ]);
+        }
+      }
+      triggerHaptic('light');
+    } catch (e) {
+      setToast(e instanceof Error ? e.message : 'Gagal like postingan!');
+    }
+  }, [api, currentUser, feedLikes, setToast, syncFeedFromSupabase]);
+
+  const addPostComment = useCallback(async (
+    postId: string,
+    isi: string,
+    parentId: string | null = null,
+    replyToNama: string | null = null
+  ) => {
+    const cleanIsi = filterKataKasar(isi.trim());
+    if (!cleanIsi) return { success: false, message: 'Komentar gaboleh kosong!' };
+    if (currentUser.is_banned) {
+      const msg = 'Akun lu lagi kena banned, nggak bisa komen.';
+      setToast(msg);
+      return { success: false, message: msg };
+    }
+    try {
+      if (isSupabaseConfigured && supabase) {
+        await supabase.from('comments').insert({
+          id: `cmt-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+          post_id: postId,
+          user_id: currentUser.user_id,
+          nama: currentUser.nama,
+          username: currentUser.username,
+          foto_profil: currentUser.foto,
+          border: currentUser.border_saat_ini,
+          isi: cleanIsi,
+          parent_id: parentId,
+          reply_to_nama: replyToNama,
+          likes_count: 0,
+          liked_by: [],
+        });
+        await syncFeedFromSupabase();
+        await api(`/api/posts/${postId}/comments`, {
+          method: 'POST',
+          body: JSON.stringify({
+            user_id: currentUser.user_id,
+            isi: cleanIsi,
+            parent_id: parentId,
+            reply_to_nama: replyToNama,
+          }),
+        }).catch(() => null);
+      } else {
+        const data = await api(`/api/posts/${postId}/comments`, {
+          method: 'POST',
+          body: JSON.stringify({
+            user_id: currentUser.user_id,
+            isi: cleanIsi,
+            parent_id: parentId,
+            reply_to_nama: replyToNama,
+          }),
+        });
+        if (data.comment) {
+          setFeedComments((prev) =>
+            prev.some((c) => c.id === data.comment.id) ? prev : [...prev, data.comment]
+          );
+          setPosts((prev) =>
+            prev.map((p) => (p.id === postId ? { ...p, comments_count: data.comments_count } : p))
+          );
+        }
+      }
+      triggerHaptic('light');
+      return { success: true, message: 'Komentar terkirim!' };
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : 'Gagal kirim komentar!';
+      setToast(msg);
+      return { success: false, message: msg };
+    }
+  }, [api, currentUser, setToast, syncFeedFromSupabase]);
+
+  const deletePostComment = useCallback(async (commentId: string) => {
+    try {
+      if (isSupabaseConfigured && supabase) {
+        await supabase.from('comments').delete().eq('parent_id', commentId);
+        await supabase.from('comments').delete().eq('id', commentId);
+        await syncFeedFromSupabase();
+        await api(`/api/comments/${commentId}?user_id=${encodeURIComponent(currentUser.user_id)}`, {
+          method: 'DELETE',
+          body: JSON.stringify({ user_id: currentUser.user_id }),
+        }).catch(() => null);
+      } else {
+        const data = await api(`/api/comments/${commentId}?user_id=${encodeURIComponent(currentUser.user_id)}`, {
+          method: 'DELETE',
+          body: JSON.stringify({ user_id: currentUser.user_id }),
+        });
+        setFeedComments((prev) => prev.filter((c) => c.id !== commentId && c.parent_id !== commentId));
+        if (data.postId) {
+          setPosts((prev) =>
+            prev.map((p) => (p.id === data.postId ? { ...p, comments_count: data.comments_count } : p))
+          );
+        }
+      }
+      setToast('Komentar dihapus!');
+    } catch (e) {
+      setToast(e instanceof Error ? e.message : 'Gagal hapus komentar!');
+    }
+  }, [api, currentUser.user_id, setToast, syncFeedFromSupabase]);
+
+  const toggleLikeComment = useCallback(async (commentId: string) => {
+    try {
+      const target = feedComments.find((c) => c.id === commentId);
+      if (isSupabaseConfigured && supabase && target) {
+        const currentLiked = target.liked_by || [];
+        const nextLiked = currentLiked.includes(currentUser.user_id)
+          ? currentLiked.filter((id) => id !== currentUser.user_id)
+          : [...currentLiked, currentUser.user_id];
+        await supabase
+          .from('comments')
+          .update({ liked_by: nextLiked, likes_count: nextLiked.length })
+          .eq('id', commentId);
+        await syncFeedFromSupabase();
+        await api(`/api/comments/${commentId}/like`, {
+          method: 'POST',
+          body: JSON.stringify({ user_id: currentUser.user_id }),
+        }).catch(() => null);
+      } else {
+        const data = await api(`/api/comments/${commentId}/like`, {
+          method: 'POST',
+          body: JSON.stringify({ user_id: currentUser.user_id }),
+        });
+        if (data.comment) {
+          setFeedComments((prev) =>
+            prev.map((c) => (c.id === commentId ? data.comment : c))
+          );
+        }
+      }
+      triggerHaptic('light');
+    } catch (e) {
+      setToast(e instanceof Error ? e.message : 'Gagal like komentar!');
+    }
+  }, [api, currentUser.user_id, feedComments, setToast, syncFeedFromSupabase]);
+
+  const reportPost = useCallback(async (postId: string) => {
+    try {
+      const target = posts.find((p) => p.id === postId);
+      if (isSupabaseConfigured && supabase && target) {
+        const reportedBy = target.reported_by || [];
+        if (reportedBy.includes(currentUser.user_id)) {
+          setToast('Lu udah report postingan ini sebelumnya.');
+          return;
+        }
+        const nextReportedBy = [...reportedBy, currentUser.user_id];
+        const nextHidden = nextReportedBy.length >= 3;
+        await supabase
+          .from('posts')
+          .update({
+            reported_by: nextReportedBy,
+            reports_count: nextReportedBy.length,
+            is_hidden: nextHidden,
+          })
+          .eq('id', postId);
+        await syncFeedFromSupabase();
+        await api(`/api/posts/${postId}/report`, {
+          method: 'POST',
+          body: JSON.stringify({ user_id: currentUser.user_id }),
+        }).catch(() => null);
+        setToast(
+          nextHidden
+            ? 'Postingan otomatis disembunyikan karena udah 3x report.'
+            : 'Laporan dikirim! Terima kasih udah bantu jaga komunitas.'
+        );
+      } else {
+        const data = await api(`/api/posts/${postId}/report`, {
+          method: 'POST',
+          body: JSON.stringify({ user_id: currentUser.user_id }),
+        });
+        if (data.post) {
+          setPosts((prev) => prev.map((p) => (p.id === postId ? data.post : p)));
+        }
+        setToast(
+          data.post?.is_hidden
+            ? 'Postingan otomatis disembunyikan karena udah 3x report.'
+            : 'Laporan dikirim! Terima kasih udah bantu jaga komunitas.'
+        );
+      }
+    } catch (e) {
+      setToast(e instanceof Error ? e.message : 'Gagal report postingan!');
+    }
+  }, [api, currentUser.user_id, posts, setToast, syncFeedFromSupabase]);
+
+  const togglePinPost = useCallback(async (postId: string) => {
+    try {
+      if (!isOwner) {
+        setToast('Khusus Owner @istamina!');
+        return;
+      }
+      const target = posts.find((p) => p.id === postId);
+      if (isSupabaseConfigured && supabase && target) {
+        const nextPinned = !target.is_pinned;
+        await supabase.from('posts').update({ is_pinned: nextPinned }).eq('id', postId);
+        await syncFeedFromSupabase();
+        await api(`/api/owner/posts/${postId}/pin`, {
+          method: 'POST',
+          body: JSON.stringify({ actor_id: currentUser.user_id }),
+        }).catch(() => null);
+        setToast(nextPinned ? '📌 Postingan disematkan!' : 'Pin dilepas.');
+      } else {
+        const data = await api(`/api/owner/posts/${postId}/pin`, {
+          method: 'POST',
+          body: JSON.stringify({ actor_id: currentUser.user_id }),
+        });
+        if (data.post) {
+          setPosts((prev) => prev.map((p) => (p.id === postId ? data.post : p)));
+        }
+        setToast(data.post?.is_pinned ? '📌 Postingan disematkan!' : 'Pin dilepas.');
+      }
+    } catch (e) {
+      setToast(e instanceof Error ? e.message : 'Gagal pin postingan!');
+    }
+  }, [api, currentUser.user_id, isOwner, posts, setToast, syncFeedFromSupabase]);
+
+  const toggleBanUser = useCallback(async (targetUserId: string) => {
+    try {
+      const data = await api(`/api/owner/users/${targetUserId}/ban`, {
+        method: 'POST',
+        body: JSON.stringify({ actor_id: currentUser.user_id }),
+      });
+      if (data.user) {
+        setAllUsers((prev) => prev.map((u) => (u.user_id === targetUserId ? data.user : u)));
+        setToast(
+          data.user.is_banned
+            ? `🚫 @${data.user.username} berhasil di-banned!`
+            : `✅ Banned @${data.user.username} udah dicabut.`
+        );
+      }
+    } catch (e) {
+      setToast(e instanceof Error ? e.message : 'Gagal update status ban!');
+    }
+  }, [api, currentUser.user_id, setToast]);
+
   // OWNER PANEL ACTIONS (@istamina ONLY)
   const createBroadcast = useCallback(async (
     jenis: Broadcast['jenis'],
     judul: string,
     pesan: string,
     target: Broadcast['target'],
-    isPublished = true
+    isPublished = true,
+    aktifSampai?: string
   ) => {
     try {
       const data = await api('/api/owner/broadcasts', {
         method: 'POST',
-        body: JSON.stringify({ actor_id: currentUser.user_id, jenis, judul, pesan, target, is_published: isPublished }),
+        body: JSON.stringify({
+          actor_id: currentUser.user_id,
+          jenis,
+          judul,
+          pesan,
+          target,
+          is_published: isPublished,
+          aktif_sampai: aktifSampai,
+        }),
       });
       setBroadcasts(data.broadcasts);
       setToast(isPublished ? '📢 Broadcast berhasil dipublish!' : 'Broadcast disimpan sebagai draft.');
@@ -1368,6 +1907,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         userOwnedBorders: effectiveUserOwnedBorders,
         rouletteSpunToday,
         rouletteWinners,
+        posts,
+        feedLikes,
+        feedComments,
 
         joinRoom,
         joinRoomByCode,
@@ -1399,6 +1941,16 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         updateBorderDecorations,
         equipBorder,
         voteBorder,
+
+        createPost,
+        deletePost,
+        toggleLikePost,
+        addPostComment,
+        deletePostComment,
+        toggleLikeComment,
+        reportPost,
+        togglePinPost,
+        toggleBanUser,
 
         createBroadcast,
         toggleBroadcastPublish,

@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useApp } from '../context/AppContext';
+import { CommunityFeed } from '../components/CommunityFeed';
 import { Gift, Zap, Ticket, Radio, Sparkles, Check, Clock, ChevronRight, Users, X } from 'lucide-react';
 
 function formatCountdown(ms: number): string {
@@ -39,9 +40,19 @@ export const BerandaView: React.FC = () => {
     return () => window.clearInterval(timer);
   }, []);
 
-  // a. Published Broadcast Faiz (Banner / Latest Published)
-  const publishedBroadcast = broadcasts.find((b) => b.is_published && b.jenis === 'banner')
-    || broadcasts.find((b) => b.is_published);
+  // a. Published Broadcast Faiz (Banner / Latest Published, auto-hilang jika durasi habis)
+  const publishedBroadcast =
+    broadcasts.find(
+      (b) =>
+        b.is_published &&
+        b.jenis === 'banner' &&
+        (!b.aktif_sampai || new Date(b.aktif_sampai).getTime() > now)
+    ) ||
+    broadcasts.find(
+      (b) =>
+        b.is_published &&
+        (!b.aktif_sampai || new Date(b.aktif_sampai).getTime() > now)
+    );
 
   // b. Active/Upcoming Bagi-bagi Coin (hilang otomatis jika kuota habis atau waktu selesai lewat)
   const activeGiveaway = giveaways.find((gw) => {
@@ -94,9 +105,17 @@ export const BerandaView: React.FC = () => {
           <Radio className="w-4 h-4" />
         </div>
         <div className="flex-1 min-w-0">
-          <span className="text-[10px] font-bold text-[#D4AF37] uppercase tracking-wider block">
-            👑 Broadcast Faiz
-          </span>
+          <div className="flex items-center justify-between gap-2">
+            <span className="text-[10px] font-bold text-[#D4AF37] uppercase tracking-wider">
+              👑 Broadcast Faiz
+            </span>
+            {publishedBroadcast?.aktif_sampai && (
+              <span className="text-[9.5px] font-semibold text-amber-300/90 flex items-center gap-1 shrink-0">
+                <Clock className="w-2.5 h-2.5" />
+                {formatCountdown(new Date(publishedBroadcast.aktif_sampai).getTime() - now)}
+              </span>
+            )}
+          </div>
           {publishedBroadcast ? (
             <>
               <h4 className="font-heading font-bold text-sm text-white mt-0.5 leading-snug">
@@ -493,6 +512,9 @@ export const BerandaView: React.FC = () => {
           </div>
         );
       })()}
+
+      {/* e. FEED KOMUNITAS REALTIME (Foto + Text ala Instagram) */}
+      <CommunityFeed />
 
       {/* COMPACT MODAL: LIST USER YANG DAPET */}
       {claimersModal && (

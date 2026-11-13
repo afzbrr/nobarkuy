@@ -50,11 +50,12 @@ export const OwnerPanelView: React.FC = () => {
 
   const [panelSection, setPanelSection] = useState<'broadcast' | 'giveaway' | 'flash' | 'redeem' | 'stats'>('broadcast');
 
-  // 1. Broadcast form
+  // 1. Broadcast form (with configurable expiry time)
   const [bcJenis, setBcJenis] = useState<Broadcast['jenis']>('banner');
   const [bcJudul, setBcJudul] = useState('');
   const [bcPesan, setBcPesan] = useState('');
   const [bcTarget, setBcTarget] = useState<Broadcast['target']>('all');
+  const [bcAktifSampai, setBcAktifSampai] = useState(() => getDefaultLocalDateTime(60));
 
   // 2. Giveaway form (with Jam Mulai & Jam Selesai)
   const [gwPerOrang, setGwPerOrang] = useState(100);
@@ -238,6 +239,37 @@ export const OwnerPanelView: React.FC = () => {
                 </select>
               </div>
 
+              <div>
+                <label className="text-[11px] font-medium text-stone-300 block mb-1">
+                  Atur Waktu Berakhir Broadcast (Otomatis Terhapus Saat Habis)
+                </label>
+                <div className="flex flex-wrap gap-1.5 mb-2">
+                  {[
+                    { label: '5 Mnt', mins: 5 },
+                    { label: '15 Mnt', mins: 15 },
+                    { label: '30 Mnt', mins: 30 },
+                    { label: '1 Jam', mins: 60 },
+                    { label: '3 Jam', mins: 180 },
+                    { label: '24 Jam', mins: 1440 },
+                  ].map((preset) => (
+                    <button
+                      key={preset.mins}
+                      type="button"
+                      onClick={() => setBcAktifSampai(getDefaultLocalDateTime(preset.mins))}
+                      className="px-2.5 py-1 rounded-lg bg-[#1F1F1F] hover:bg-[#2A2A2A] border border-[#303030] text-[10px] font-semibold text-[#D4AF37]"
+                    >
+                      {preset.label}
+                    </button>
+                  ))}
+                </div>
+                <input
+                  type="datetime-local"
+                  value={bcAktifSampai}
+                  onChange={(e) => setBcAktifSampai(e.target.value)}
+                  className="w-full bg-[#1A1A1A] border border-[#282828] rounded-xl px-3 py-2 text-white text-[11px]"
+                />
+              </div>
+
               <div className="grid grid-cols-2 gap-2">
                 <button
                   onClick={() => {
@@ -245,7 +277,12 @@ export const OwnerPanelView: React.FC = () => {
                       setToast('Judul dan isi wajib diisi!');
                       return;
                     }
-                    createBroadcast(bcJenis, bcJudul.trim(), bcPesan.trim(), bcTarget, false);
+                    const expMs = new Date(bcAktifSampai).getTime();
+                    if (isNaN(expMs) || expMs <= Date.now()) {
+                      setToast('Waktu berakhir broadcast harus lebih dari sekarang!');
+                      return;
+                    }
+                    createBroadcast(bcJenis, bcJudul.trim(), bcPesan.trim(), bcTarget, false, new Date(expMs).toISOString());
                     setBcJudul('');
                     setBcPesan('');
                   }}
@@ -259,7 +296,12 @@ export const OwnerPanelView: React.FC = () => {
                       setToast('Judul dan isi wajib diisi!');
                       return;
                     }
-                    createBroadcast(bcJenis, bcJudul.trim(), bcPesan.trim(), bcTarget, true);
+                    const expMs = new Date(bcAktifSampai).getTime();
+                    if (isNaN(expMs) || expMs <= Date.now()) {
+                      setToast('Waktu berakhir broadcast harus lebih dari sekarang!');
+                      return;
+                    }
+                    createBroadcast(bcJenis, bcJudul.trim(), bcPesan.trim(), bcTarget, true, new Date(expMs).toISOString());
                     setBcJudul('');
                     setBcPesan('');
                   }}
@@ -292,6 +334,16 @@ export const OwnerPanelView: React.FC = () => {
                         </span>
                         <div className="font-bold text-white">{bc.judul}</div>
                         <div className="text-[11px] text-stone-400 mt-0.5">{bc.pesan}</div>
+                        {bc.aktif_sampai && (
+                          <div className="text-[9.5px] text-amber-300/90 mt-1">
+                            Berakhir: {new Date(bc.aktif_sampai).toLocaleString('id-ID', {
+                              day: '2-digit',
+                              month: 'short',
+                              hour: '2-digit',
+                              minute: '2-digit',
+                            })}
+                          </div>
+                        )}
                       </div>
                     </div>
                     <div className="flex items-center justify-end gap-2 pt-1 border-t border-[#222]">

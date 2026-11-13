@@ -456,3 +456,7 @@ export const DECORATION_OPTIONS = {
     { id: 'muter', nama: 'Muter Pelan', harga: 150 },
   ],
 };
+
+export function getBorderById(borderId: string): BorderDefinition | undefined {
+  return ALL_BORDERS.find((b) => b.id === borderId);
+}
