@@ -59,7 +59,7 @@ export const CommunityFeed: React.FC = () => {
   const [isCreateOpen, setIsCreateOpen] = useState(false);
   const [postImageUrl, setPostImageUrl] = useState('');
   const [postCaption, setPostCaption] = useState('');
-  const [postTag, setPostTag] = useState('Nobar');
+  const [postTag, setPostTag] = useState('');
   const [isSubmittingPost, setIsSubmittingPost] = useState(false);
   const [createError, setCreateError] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -116,8 +116,8 @@ export const CommunityFeed: React.FC = () => {
   const handleSubmitPost = async (e: React.FormEvent) => {
     e.preventDefault();
     setCreateError(null);
-    if (!postImageUrl) {
-      setCreateError('Pilih foto dulu buat diposting!');
+    if (!postImageUrl && !postCaption.trim()) {
+      setCreateError('Isi teks atau pilih foto dulu buat diposting!');
       return;
     }
     if (!isOwner && remainingPostsToday <= 0) {
@@ -131,14 +131,15 @@ export const CommunityFeed: React.FC = () => {
       setIsCreateOpen(false);
       setPostImageUrl('');
       setPostCaption('');
-      setPostTag('Nobar');
+      setPostTag('');
     } else {
       setCreateError(res.message);
     }
   };
 
   const handleSharePost = async (post: FeedPost) => {
-    const shareText = `${post.nama} (@${post.username}) di NOBAR KUY: "${filterKataKasar(post.caption)}" #${post.tag}`;
+    const tagSuffix = post.tag ? ` (${post.tag})` : '';
+    const shareText = `${post.nama} (@${post.username}) di NOBAR KUY: "${filterKataKasar(post.caption)}"${tagSuffix}`;
     const appUrl = window.location.origin;
     try {
       if (navigator.share) {
@@ -405,22 +406,32 @@ export const CommunityFeed: React.FC = () => {
                   </div>
                 </div>
 
-                {/* 2. FOTO UTUH: object-fit: contain, width: 100%, height: auto, max-height: 500px, background hitam, di tengah */}
-                <div className="w-full bg-black flex items-center justify-center">
-                  <img
-                    src={post.image_url}
-                    alt={filteredCaption || 'Foto Postingan'}
-                    style={{
-                      width: '100%',
-                      height: 'auto',
-                      maxHeight: '500px',
-                      objectFit: 'contain',
-                      display: 'block',
-                      margin: '0 auto',
-                      backgroundColor: '#000000',
-                    }}
-                  />
-                </div>
+                {/* 2. FOTO UTUH (jika ada): object-fit: contain, width: 100%, height: auto, max-height: 500px, background hitam, di tengah */}
+                {post.image_url ? (
+                  <div className="w-full bg-black flex items-center justify-center">
+                    <img
+                      src={post.image_url}
+                      alt={filteredCaption || 'Foto Postingan'}
+                      style={{
+                        width: '100%',
+                        height: 'auto',
+                        maxHeight: '500px',
+                        objectFit: 'contain',
+                        display: 'block',
+                        margin: '0 auto',
+                        backgroundColor: '#000000',
+                      }}
+                    />
+                  </div>
+                ) : (
+                  filteredCaption && (
+                    <div className="px-3.5 py-2">
+                      <p className="text-[13px] text-stone-100 leading-relaxed whitespace-pre-wrap break-words">
+                        {filteredCaption}
+                      </p>
+                    </div>
+                  )
+                )}
 
                 {/* 3. ACTIONS ROW: Like, Komen, Share, Beli Border Ini */}
                 <div className="px-3.5 pt-3 pb-1 flex items-center justify-between gap-2">
@@ -493,23 +504,27 @@ export const CommunityFeed: React.FC = () => {
                   </button>
                 </div>
 
-                {/* 4. CAPTION & TAG */}
-                <div className="px-3.5 pb-2 space-y-1.5">
-                  {filteredCaption && (
-                    <p className="text-xs text-stone-200 leading-relaxed whitespace-pre-wrap break-words">
-                      <span className="font-heading font-bold text-white mr-1.5">
-                        {author.nama}
-                      </span>
-                      {filteredCaption}
-                    </p>
-                  )}
+                {/* 4. CAPTION & KATEGORI (TANPA HASHTAG) */}
+                {(Boolean(post.image_url && filteredCaption) || Boolean(post.tag)) && (
+                  <div className="px-3.5 pb-2 space-y-1.5">
+                    {Boolean(post.image_url) && filteredCaption && (
+                      <p className="text-xs text-stone-200 leading-relaxed whitespace-pre-wrap break-words">
+                        <span className="font-heading font-bold text-white mr-1.5">
+                          {author.nama}
+                        </span>
+                        {filteredCaption}
+                      </p>
+                    )}
 
-                  <div className="flex items-center gap-1.5 flex-wrap">
-                    <span className="px-2 py-0.5 rounded-md bg-[#1D1D1D] border border-[#2B2B2B] text-[10px] font-semibold text-[#D4AF37]">
-                      #{post.tag}
-                    </span>
+                    {post.tag && (
+                      <div className="flex items-center gap-1.5 flex-wrap">
+                        <span className="px-2 py-0.5 rounded-md bg-[#1D1D1D] border border-[#2B2B2B] text-[10px] font-semibold text-[#D4AF37]">
+                          {post.tag}
+                        </span>
+                      </div>
+                    )}
                   </div>
-                </div>
+                )}
 
                 {/* 5. LIHAT X KOMENTAR + LATEST COMMENT PREVIEW */}
                 <div className="px-3.5 pb-3 pt-1 border-t border-[#1F1F1F]">
@@ -559,7 +574,7 @@ export const CommunityFeed: React.FC = () => {
                 <h4 className="font-heading font-bold text-sm text-white">Buat Postingan Baru</h4>
                 <p className="text-[10px] text-stone-400">
                   {isOwner
-                    ? 'Posting foto buat komunitas (Owner)'
+                    ? 'Tulis teks atau upload foto buat komunitas (Owner)'
                     : `Sisa kuota hari ini: ${remainingPostsToday}/3 post`}
                 </p>
               </div>
@@ -573,7 +588,7 @@ export const CommunityFeed: React.FC = () => {
             </div>
 
             <form onSubmit={handleSubmitPost} className="space-y-3 text-xs">
-              {/* Photo picker & untouched preview */}
+              {/* Photo picker (optional!) & untouched preview */}
               <input
                 ref={fileInputRef}
                 type="file"
@@ -597,55 +612,64 @@ export const CommunityFeed: React.FC = () => {
                       backgroundColor: '#000000',
                     }}
                   />
-                  <button
-                    type="button"
-                    onClick={() => fileInputRef.current?.click()}
-                    className="absolute bottom-2 right-2 px-2.5 py-1 rounded-lg bg-black/80 border border-white/20 text-white text-[10px] font-semibold"
-                  >
-                    Ganti Foto
-                  </button>
+                  <div className="absolute bottom-2 right-2 flex items-center gap-1.5">
+                    <button
+                      type="button"
+                      onClick={() => setPostImageUrl('')}
+                      className="px-2.5 py-1 rounded-lg bg-rose-950/90 border border-rose-500/40 text-rose-200 text-[10px] font-semibold"
+                    >
+                      Hapus Foto
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => fileInputRef.current?.click()}
+                      className="px-2.5 py-1 rounded-lg bg-black/80 border border-white/20 text-white text-[10px] font-semibold"
+                    >
+                      Ganti Foto
+                    </button>
+                  </div>
                 </div>
               ) : (
                 <button
                   type="button"
                   onClick={() => fileInputRef.current?.click()}
-                  className="w-full py-10 rounded-xl bg-[#191919] hover:bg-[#1F1F1F] border border-dashed border-[#363636] flex flex-col items-center justify-center gap-2 text-stone-400"
+                  className="w-full py-6 rounded-xl bg-[#191919] hover:bg-[#1F1F1F] border border-dashed border-[#363636] flex flex-col items-center justify-center gap-1.5 text-stone-400"
                 >
-                  <ImageIcon className="w-7 h-7 text-[#D4AF37]" />
-                  <span className="font-semibold text-white">Pilih Foto dari Galeri</span>
+                  <ImageIcon className="w-6 h-6 text-[#D4AF37]" />
+                  <span className="font-semibold text-white">Tambah Foto (Opsional)</span>
                   <span className="text-[10px] text-stone-500">
-                    Cuma foto (portrait, square, landscape tampil utuh)
+                    Bisa posting teks aja atau tambah foto dari galeri
                   </span>
                 </button>
               )}
 
               <div>
-                <label className="text-[11px] font-medium text-stone-300 block mb-1">Caption</label>
+                <label className="text-[11px] font-medium text-stone-300 block mb-1">Teks / Caption</label>
                 <textarea
                   rows={3}
                   maxLength={500}
                   value={postCaption}
                   onChange={(e) => setPostCaption(e.target.value)}
-                  placeholder="Tulis cerita atau review nobar lu di sini..."
+                  placeholder="Tulis cerita, curhat, atau review nobar lu di sini..."
                   className="w-full bg-[#1A1A1A] border border-[#2A2A2A] rounded-xl px-3 py-2 text-white focus:outline-none focus:border-[#D4AF37]"
                 />
               </div>
 
               <div>
-                <label className="text-[11px] font-medium text-stone-300 block mb-1">Pilih Tag</label>
+                <label className="text-[11px] font-medium text-stone-300 block mb-1">Kategori (Opsional)</label>
                 <div className="flex flex-wrap gap-1.5">
                   {FEED_TAGS.map((tag) => (
                     <button
                       key={tag}
                       type="button"
-                      onClick={() => setPostTag(tag)}
+                      onClick={() => setPostTag(postTag === tag ? '' : tag)}
                       className={`px-2.5 py-1 rounded-lg text-[10.5px] font-semibold border transition-colors ${
                         postTag === tag
                           ? 'bg-[#D4AF37] text-black border-[#D4AF37]'
                           : 'bg-[#1A1A1A] text-stone-300 border-[#282828]'
                       }`}
                     >
-                      #{tag}
+                      {tag}
                     </button>
                   ))}
                 </div>

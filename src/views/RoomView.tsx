@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect, useCallback } from 'react';
 import { useApp } from '../context/AppContext';
 import { UserAvatar } from '../components/UserAvatar';
 import { GenreType, ChatMessage } from '../types';
@@ -59,6 +59,8 @@ export const RoomView: React.FC = () => {
     createQuiz,
     changeRoomCode,
     changeRoomVideo,
+    videoSyncEvent,
+    syncRoomVideo,
     setIsTransferModalOpen,
     setTransferRecipient,
     allUsers,
@@ -105,11 +107,123 @@ export const RoomView: React.FC = () => {
   const [quizAnswer, setQuizAnswer] = useState('');
 
   const chatScrollRef = useRef<HTMLDivElement>(null);
+  const iframeRef = useRef<HTMLIFrameElement>(null);
+  const hostPlaybackRef = useRef<{ currentTime: number; isPlaying: boolean }>({
+    currentTime: 0,
+    isPlaying: true,
+  });
+  const viewerPlaybackRef = useRef<{ currentTime: number; isPlaying: boolean }>({
+    currentTime: 0,
+    isPlaying: true,
+  });
+
+  const sendYtCommand = useCallback((func: string, args: unknown[] = []) => {
+    try {
+      iframeRef.current?.contentWindow?.postMessage(
+        JSON.stringify({ event: 'command', func, args }),
+        '*'
+      );
+    } catch {
+      // ignore cross-origin postMessage errors
+    }
+  }, []);
+
+  const registerYouTubeListener = useCallback(() => {
+    try {
+      const win = iframeRef.current?.contentWindow;
+      if (!win) return;
+      win.postMessage(JSON.stringify({ event: 'listening', id: 1, channel: 'widget' }), '*');
+      win.postMessage(
+        JSON.stringify({ event: 'command', func: 'addEventListener', args: ['onStateChange'] }),
+        '*'
+      );
+    } catch {
+      // ignore
+    }
+  }, []);
+
   useEffect(() => {
     if (chatScrollRef.current) {
       chatScrollRef.current.scrollTop = chatScrollRef.current.scrollHeight;
     }
   }, [chats]);
+
+  // Listen to YouTube IFrame postMessage telemetry so Host & Viewers sync across phones
+  useEffect(() => {
+    if (!currentRoom) return;
+    const amHost = currentRoom.host_id === currentUser.user_id;
+
+    const handleYtMessage = (event: MessageEvent) => {
+      if (typeof event.origin === 'string' && !event.origin.includes('youtube.com')) return;
+      let parsed: { event?: string; info?: { currentTime?: number; playerState?: number } } | null = null;
+      if (typeof event.data === 'string') {
+        try {
+          parsed = JSON.parse(event.data);
+        } catch {
+          return;
+        }
+      } else if (event.data && typeof event.data === 'object') {
+        parsed = event.data as { event?: string; info?: { currentTime?: number; playerState?: number } };
+      }
+      if (!parsed || !parsed.info) return;
+
+      const { currentTime, playerState } = parsed.info;
+      if (amHost) {
+        if (typeof currentTime === 'number') {
+          hostPlaybackRef.current.currentTime = currentTime;
+        }
+        if (typeof playerState === 'number' && (playerState === 1 || playerState === 2)) {
+          const playingNow = playerState === 1;
+          const stateChanged = hostPlaybackRef.current.isPlaying !== playingNow;
+          hostPlaybackRef.current.isPlaying = playingNow;
+          if (stateChanged) {
+            syncRoomVideo(currentRoom.id, hostPlaybackRef.current.currentTime, playingNow);
+          }
+        }
+      } else {
+        if (typeof currentTime === 'number') {
+          viewerPlaybackRef.current.currentTime = currentTime;
+        }
+        if (typeof playerState === 'number' && (playerState === 1 || playerState === 2)) {
+          viewerPlaybackRef.current.isPlaying = playerState === 1;
+        }
+      }
+    };
+
+    window.addEventListener('message', handleYtMessage);
+    let intervalId: number | null = null;
+    if (amHost) {
+      intervalId = window.setInterval(() => {
+        syncRoomVideo(
+          currentRoom.id,
+          hostPlaybackRef.current.currentTime,
+          hostPlaybackRef.current.isPlaying
+        );
+      }, 5000);
+    }
+
+    return () => {
+      window.removeEventListener('message', handleYtMessage);
+      if (intervalId) window.clearInterval(intervalId);
+    };
+  }, [currentRoom, currentUser.user_id, syncRoomVideo]);
+
+  // Apply incoming Host video sync on Viewer phones
+  useEffect(() => {
+    if (!currentRoom || currentRoom.host_id === currentUser.user_id) return;
+    if (!videoSyncEvent || videoSyncEvent.roomId !== currentRoom.id) return;
+
+    const drift = Math.abs(viewerPlaybackRef.current.currentTime - videoSyncEvent.currentTime);
+    if (drift > 2.5) {
+      sendYtCommand('seekTo', [videoSyncEvent.currentTime, true]);
+      viewerPlaybackRef.current.currentTime = videoSyncEvent.currentTime;
+    }
+    if (videoSyncEvent.isPlaying) {
+      sendYtCommand('playVideo');
+    } else {
+      sendYtCommand('pauseVideo');
+    }
+  }, [currentRoom, currentUser.user_id, sendYtCommand, videoSyncEvent]);
 
   // Auto-mark visible chats as read (Telegram-style read receipts)
   useEffect(() => {
@@ -184,7 +298,7 @@ export const RoomView: React.FC = () => {
   // =========================================================================
   if (!currentRoom) {
     const publicRooms = rooms.filter((r) => !r.is_private && r.status === 'live');
-    const genres: GenreType[] = ['Horror', 'Drakor', 'Anime', 'Komedi', 'Action', 'Galau', 'Lainnya'];
+    const genres: GenreType[] = ['Horror', 'Drakor', 'Anime', 'Kartun', 'Komedi', 'Action', 'Galau', 'Lainnya'];
 
     return (
       <div className="space-y-4 pb-20 select-none">
@@ -595,6 +709,24 @@ export const RoomView: React.FC = () => {
         </div>
 
         <div className="flex items-center gap-1 shrink-0">
+          {isHost && (
+            <button
+              onClick={() => {
+                syncRoomVideo(
+                  currentRoom.id,
+                  hostPlaybackRef.current.currentTime,
+                  hostPlaybackRef.current.isPlaying
+                );
+                setToast('Sinkronisasi video dikirim ke semua penonton!');
+              }}
+              className="px-2 py-1 rounded-lg bg-[#1A202C] border border-sky-500/40 text-sky-300 hover:bg-sky-500/20 text-[10px] font-semibold flex items-center gap-1 transition-colors"
+              title="Sync Video Penonton"
+            >
+              <RefreshCw className="w-3 h-3" />
+              <span>Sync</span>
+            </button>
+          )}
+
           {(isHost || isOwner) && (
             <button
               onClick={() => {
@@ -690,7 +822,9 @@ export const RoomView: React.FC = () => {
       <div className={`relative bg-black shrink-0 transition-all ${isFocusMode ? 'flex-1' : 'h-52'}`}>
         {youtubeId ? (
           <iframe
-            src={`https://www.youtube.com/embed/${youtubeId}?autoplay=1&enablejsapi=1&rel=0&playsinline=1`}
+            ref={iframeRef}
+            onLoad={registerYouTubeListener}
+            src={`https://www.youtube.com/embed/${youtubeId}?autoplay=1&enablejsapi=1&rel=0&playsinline=1&origin=${encodeURIComponent(window.location.origin)}`}
             title={currentRoom.judul}
             className="w-full h-full border-0"
             allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"

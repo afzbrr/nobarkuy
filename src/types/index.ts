@@ -1,4 +1,4 @@
-export type GenreType = 'Horror' | 'Drakor' | 'Anime' | 'Komedi' | 'Action' | 'Galau' | 'Lainnya';
+export type GenreType = 'Horror' | 'Drakor' | 'Anime' | 'Kartun' | 'Komedi' | 'Action' | 'Galau' | 'Lainnya';
 
 export interface BorderDecorations {
   bingkai: string; // 'tipis' | 'tebal-emas' | 'berlian' | 'hitam-emas' | 'api' | 'pelangi'

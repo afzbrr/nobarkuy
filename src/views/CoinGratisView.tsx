@@ -124,12 +124,15 @@ export const CoinGratisView: React.FC = () => {
         </div>
       </div>
 
-      {/* 2. MISI HARIAN (SATU KALI SAJA, NO DUPLICATE) */}
+      {/* 2. MISI MINGGUAN (5 MISI, RESET PER MINGGU) */}
       <div className="rounded-2xl bg-[#141414] border border-[#262626] p-4">
         <div className="flex items-center justify-between pb-3 border-b border-[#222]">
-          <div className="flex items-center gap-2">
-            <span className="text-base">🎯</span>
-            <h4 className="font-heading font-bold text-sm text-white">Misi Harian</h4>
+          <div>
+            <div className="flex items-center gap-2">
+              <span className="text-base">🎯</span>
+              <h4 className="font-heading font-bold text-sm text-white">Misi Mingguan</h4>
+            </div>
+            <p className="text-[10px] text-stone-400 mt-0.5 pl-6">Reset otomatis tiap minggu (Senin)</p>
           </div>
           <span className="text-[11px] text-stone-400">
             Progress:{' '}

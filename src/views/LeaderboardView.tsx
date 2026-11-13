@@ -8,6 +8,8 @@ import { Heart, Send, Crown } from 'lucide-react';
 
 export const LeaderboardView: React.FC = () => {
   const {
+    currentUser,
+    isOwner,
     allUsers,
     voteBorder,
     setIsTransferModalOpen,
@@ -20,8 +22,15 @@ export const LeaderboardView: React.FC = () => {
   // Exclude Owner (@istamina) from competition leaderboards
   const filteredUsers = allUsers.filter((u) => !isOwnerUsername(u.username));
 
-  // Real Owner profile from synced DB if Owner has logged in
-  const ownerProfile = allUsers.find((u) => isOwnerUsername(u.username));
+  // Real Owner profile: prefer live currentUser when @istamina is logged in so Telegram photo always matches header
+  const ownerFromList = allUsers.find((u) => isOwnerUsername(u.username));
+  const ownerProfile = isOwner
+    ? {
+        ...ownerFromList,
+        ...currentUser,
+        foto: currentUser.foto || ownerFromList?.foto || '',
+      }
+    : ownerFromList;
 
   const sultanRankings = [...filteredUsers].sort((a, b) => b.coin - a.coin);
   const nobarRankings = [...filteredUsers].sort((a, b) => b.total_nonton - a.total_nonton);

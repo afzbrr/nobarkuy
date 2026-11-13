@@ -278,6 +278,7 @@ interface DatabaseSchema {
   quizzes: Record<string, Quiz>;
   coinHistory: Record<string, CoinHistoryItem[]>;
   watchedRooms: Record<string, string[]>;
+  userWatchedWeekRooms?: Record<string, string[]>;
   missionClaims: Record<string, boolean>;
   rouletteSpins: Record<string, boolean>;
   userChatCounts: Record<string, number>;
@@ -407,6 +408,7 @@ function createEmptyDb(): DatabaseSchema {
     quizzes: {},
     coinHistory: {},
     watchedRooms: {},
+    userWatchedWeekRooms: {},
     missionClaims: {},
     rouletteSpins: {},
     userChatCounts: {},
@@ -527,16 +529,29 @@ function checkAndUnlockNontonBorders(userId: string) {
 }
 
 function getTodayKey(): string {
-  return new Date().toISOString().split('T')[0];
+  const wib = new Date(Date.now() + 7 * 3600 * 1000);
+  return wib.toISOString().split('T')[0];
+}
+
+// Weekly reset every Monday 00:00 WIB (e.g. 2026-W46)
+function getWeekKey(date = new Date()): string {
+  const wib = new Date(date.getTime() + 7 * 3600 * 1000);
+  const d = new Date(Date.UTC(wib.getUTCFullYear(), wib.getUTCMonth(), wib.getUTCDate()));
+  const dayNum = d.getUTCDay() || 7;
+  d.setUTCDate(d.getUTCDate() + 4 - dayNum);
+  const yearStart = new Date(Date.UTC(d.getUTCFullYear(), 0, 1));
+  const weekNo = Math.ceil(((d.getTime() - yearStart.getTime()) / 86400000 + 1) / 7);
+  return `${d.getUTCFullYear()}-W${String(weekNo).padStart(2, '0')}`;
 }
 
 function buildUserMissions(userId: string) {
-  const today = getTodayKey();
-  const watchedToday = (db.watchedRooms[userId] || []).length;
-  const chatCount = db.userChatCounts[`${userId}_${today}`] || 0;
-  const giftCount = db.userGiftCounts[`${userId}_${today}`] || 0;
-  const voteCount = db.userPollVoteCounts[`${userId}_${today}`] || 0;
-  const transferCount = db.userTransferCounts[`${userId}_${today}`] || 0;
+  const weekKey = getWeekKey();
+  if (!db.userWatchedWeekRooms) db.userWatchedWeekRooms = {};
+  const watchedThisWeek = (db.userWatchedWeekRooms[`${userId}_${weekKey}`] || []).length;
+  const chatCount = db.userChatCounts[`${userId}_${weekKey}`] || 0;
+  const giftCount = db.userGiftCounts[`${userId}_${weekKey}`] || 0;
+  const voteCount = db.userPollVoteCounts[`${userId}_${weekKey}`] || 0;
+  const transferCount = db.userTransferCounts[`${userId}_${weekKey}`] || 0;
 
   return [
     {
@@ -544,8 +559,8 @@ function buildUserMissions(userId: string) {
       judul: 'Nonton di Room Nobar 1x',
       hadiahCoin: 10,
       target: 1,
-      current: Math.min(1, watchedToday),
-      klaim: Boolean(db.missionClaims[`${userId}_${today}_m-1`]),
+      current: Math.min(1, watchedThisWeek),
+      klaim: Boolean(db.missionClaims[`${userId}_${weekKey}_m-1`]),
     },
     {
       id: 'm-2',
@@ -553,7 +568,7 @@ function buildUserMissions(userId: string) {
       hadiahCoin: 10,
       target: 5,
       current: Math.min(5, chatCount),
-      klaim: Boolean(db.missionClaims[`${userId}_${today}_m-2`]),
+      klaim: Boolean(db.missionClaims[`${userId}_${weekKey}_m-2`]),
     },
     {
       id: 'm-3',
@@ -561,7 +576,7 @@ function buildUserMissions(userId: string) {
       hadiahCoin: 10,
       target: 1,
       current: Math.min(1, giftCount),
-      klaim: Boolean(db.missionClaims[`${userId}_${today}_m-3`]),
+      klaim: Boolean(db.missionClaims[`${userId}_${weekKey}_m-3`]),
     },
     {
       id: 'm-4',
@@ -569,7 +584,7 @@ function buildUserMissions(userId: string) {
       hadiahCoin: 5,
       target: 1,
       current: Math.min(1, voteCount),
-      klaim: Boolean(db.missionClaims[`${userId}_${today}_m-4`]),
+      klaim: Boolean(db.missionClaims[`${userId}_${weekKey}_m-4`]),
     },
     {
       id: 'm-5',
@@ -577,7 +592,7 @@ function buildUserMissions(userId: string) {
       hadiahCoin: 5,
       target: 1,
       current: Math.min(1, transferCount),
-      klaim: Boolean(db.missionClaims[`${userId}_${today}_m-5`]),
+      klaim: Boolean(db.missionClaims[`${userId}_${weekKey}_m-5`]),
     },
   ];
 }
@@ -671,6 +686,8 @@ async function startServer() {
             disconnectTimers.delete(uid);
           }
           broadcastEvent('ONLINE_COUNT', { count: getOnlineUserCount() });
+        } else if (msg.type === 'VIDEO_SYNC' && msg.payload?.roomId) {
+          broadcastEvent('VIDEO_SYNC', msg.payload);
         }
       } catch {
         // ignore invalid frames
@@ -856,13 +873,20 @@ async function startServer() {
     db.rooms.unshift(newRoom);
     db.chats[newRoom.id] = [];
 
-    // Track permanent total_nonton
+    // Track permanent total_nonton + weekly mission
     if (!db.watchedRooms[user.user_id]) db.watchedRooms[user.user_id] = [];
     if (!db.watchedRooms[user.user_id].includes(newRoom.id)) {
       db.watchedRooms[user.user_id].push(newRoom.id);
       user.total_nonton += 1;
       user.terakhir_nonton = new Date().toISOString();
       checkAndUnlockNontonBorders(user.user_id);
+    }
+    const weekKey = getWeekKey();
+    if (!db.userWatchedWeekRooms) db.userWatchedWeekRooms = {};
+    const weekRoomKey = `${user.user_id}_${weekKey}`;
+    if (!db.userWatchedWeekRooms[weekRoomKey]) db.userWatchedWeekRooms[weekRoomKey] = [];
+    if (!db.userWatchedWeekRooms[weekRoomKey].includes(newRoom.id)) {
+      db.userWatchedWeekRooms[weekRoomKey].push(newRoom.id);
     }
 
     persistDb();
@@ -907,13 +931,20 @@ async function startServer() {
       room.penonton_count = room.viewers.length;
     }
 
-    // Track permanent total_nonton (never resets!)
+    // Track permanent total_nonton (never resets!) + weekly mission
     if (!db.watchedRooms[user.user_id]) db.watchedRooms[user.user_id] = [];
     if (!db.watchedRooms[user.user_id].includes(room.id)) {
       db.watchedRooms[user.user_id].push(room.id);
       user.total_nonton += 1;
       user.terakhir_nonton = new Date().toISOString();
       checkAndUnlockNontonBorders(user.user_id);
+    }
+    const weekKey = getWeekKey();
+    if (!db.userWatchedWeekRooms) db.userWatchedWeekRooms = {};
+    const weekRoomKey = `${user.user_id}_${weekKey}`;
+    if (!db.userWatchedWeekRooms[weekRoomKey]) db.userWatchedWeekRooms[weekRoomKey] = [];
+    if (!db.userWatchedWeekRooms[weekRoomKey].includes(room.id)) {
+      db.userWatchedWeekRooms[weekRoomKey].push(room.id);
     }
 
     persistDb();
@@ -1059,11 +1090,11 @@ async function startServer() {
     db.chats[roomId].push(newMsg);
     room.chats_count += 1;
 
-    const today = getTodayKey();
+    const weekKey = getWeekKey();
     if (is_gift) {
-      db.userGiftCounts[`${user.user_id}_${today}`] = (db.userGiftCounts[`${user.user_id}_${today}`] || 0) + 1;
+      db.userGiftCounts[`${user.user_id}_${weekKey}`] = (db.userGiftCounts[`${user.user_id}_${weekKey}`] || 0) + 1;
     } else {
-      db.userChatCounts[`${user.user_id}_${today}`] = (db.userChatCounts[`${user.user_id}_${today}`] || 0) + 1;
+      db.userChatCounts[`${user.user_id}_${weekKey}`] = (db.userChatCounts[`${user.user_id}_${weekKey}`] || 0) + 1;
     }
 
     persistDb();
@@ -1179,8 +1210,8 @@ async function startServer() {
     db.chats[roomId].push(newMsg);
     room.chats_count += 1;
 
-    const today = getTodayKey();
-    db.userGiftCounts[`${sender.user_id}_${today}`] = (db.userGiftCounts[`${sender.user_id}_${today}`] || 0) + 1;
+    const weekKey = getWeekKey();
+    db.userGiftCounts[`${sender.user_id}_${weekKey}`] = (db.userGiftCounts[`${sender.user_id}_${weekKey}`] || 0) + 1;
 
     persistDb();
     broadcastEvent('CHAT_ADDED', { roomId, message: newMsg });
@@ -1332,8 +1363,8 @@ async function startServer() {
     poll.pilihan = poll.pilihan.map((p) =>
       p.id === optionId ? { ...p, votes: p.votes + 1, voters: [...p.voters, String(user_id)] } : p
     );
-    const today = getTodayKey();
-    db.userPollVoteCounts[`${user_id}_${today}`] = (db.userPollVoteCounts[`${user_id}_${today}`] || 0) + 1;
+    const weekKey = getWeekKey();
+    db.userPollVoteCounts[`${user_id}_${weekKey}`] = (db.userPollVoteCounts[`${user_id}_${weekKey}`] || 0) + 1;
     persistDb();
     broadcastEvent('POLL_UPDATED', { roomId, poll });
     res.json({ poll, missions: buildUserMissions(String(user_id)) });
@@ -1561,10 +1592,10 @@ async function startServer() {
     const user = db.users[userId];
     if (!user) return res.status(404).json({ error: 'User ga ketemu!' });
 
-    const today = getTodayKey();
-    const key = `${userId}_${today}_${missionId}`;
+    const weekKey = getWeekKey();
+    const key = `${userId}_${weekKey}_${missionId}`;
     if (db.missionClaims[key]) {
-      return res.status(400).json({ error: 'Misi ini udah lu klaim hari ini!' });
+      return res.status(400).json({ error: 'Misi ini udah lu klaim minggu ini!' });
     }
 
     const missions = buildUserMissions(userId);
@@ -1688,8 +1719,8 @@ async function startServer() {
       addCoinHistory(recipient.user_id, 'tambah', amt, `Transfer dari @${sender.username}${note ? ` (${note})` : ''}`);
     }
 
-    const today = getTodayKey();
-    db.userTransferCounts[`${sender.user_id}_${today}`] = (db.userTransferCounts[`${sender.user_id}_${today}`] || 0) + 1;
+    const weekKey = getWeekKey();
+    db.userTransferCounts[`${sender.user_id}_${weekKey}`] = (db.userTransferCounts[`${sender.user_id}_${weekKey}`] || 0) + 1;
 
     persistDb();
     broadcastEvent('USER_UPDATED', { user: sender });
@@ -2164,8 +2195,13 @@ async function startServer() {
     if (user.is_banned) return res.status(403).json({ error: 'Akun lu lagi di-banned Owner!' });
 
     const imgStr = String(image_url || '').trim();
-    if (!imgStr || imgStr.startsWith('data:video/')) {
-      return res.status(400).json({ error: 'Wajib upload foto (bukan video)!' });
+    if (imgStr.startsWith('data:video/')) {
+      return res.status(400).json({ error: 'Cuma boleh upload foto ya, video ga bisa!' });
+    }
+
+    const cleanCaption = filterKataKasarServer(String(caption || '').trim());
+    if (!imgStr && !cleanCaption) {
+      return res.status(400).json({ error: 'Isi teks atau pilih foto dulu buat diposting!' });
     }
 
     const today = getTodayKey();
@@ -2176,7 +2212,6 @@ async function startServer() {
       return res.status(400).json({ error: 'Maksimal 3 post per hari udah tercapai! Besok lagi ya.' });
     }
 
-    const cleanCaption = filterKataKasarServer(String(caption || '').trim());
     const newPost: FeedPost = {
       id: `post-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
       user_id: user.user_id,
@@ -2187,7 +2222,7 @@ async function startServer() {
       custom_text: user.custom_text,
       image_url: imgStr,
       caption: cleanCaption,
-      tag: String(tag || 'Nobar').trim() || 'Nobar',
+      tag: String(tag || '').trim(),
       likes_count: 0,
       comments_count: 0,
       is_pinned: false,
