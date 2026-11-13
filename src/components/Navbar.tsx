@@ -1,7 +1,7 @@
-import React, { useState } from 'react';
+import React from 'react';
 import { useApp } from '../context/AppContext';
 import { UserAvatar } from './UserAvatar';
-import { Sparkles, Shield, ChevronDown, Smartphone, Coins } from 'lucide-react';
+import { Play, Crown } from 'lucide-react';
 
 export const Navbar: React.FC = () => {
   const {
@@ -9,142 +9,100 @@ export const Navbar: React.FC = () => {
     isOwner,
     setIsWalletModalOpen,
     setActiveTab,
-    activeTab,
-    switchDevUser,
   } = useApp();
 
-  const [isDevMenuOpen, setIsDevMenuOpen] = useState(false);
-
   return (
-    <header className="sticky top-0 z-40 bg-[#0A0A0A]/90 backdrop-blur-md border-b border-[#1E1E1E] px-4 py-3 select-none">
-      <div className="max-w-md mx-auto flex items-center justify-between gap-3">
-        {/* Brand / Logo */}
-        <div className="flex items-center gap-2.5">
-          <button
-            onClick={() => setActiveTab('beranda')}
-            className="flex items-center gap-2 text-left group"
-          >
-            <div className="w-8 h-8 rounded-lg bg-[#141414] border border-[#262626] flex items-center justify-center text-[#D4AF37] group-hover:border-[#D4AF37]/50 transition-colors">
-              <span className="font-heading font-black text-sm tracking-tighter">NK</span>
-            </div>
-            <div>
-              <div className="flex items-center gap-1.5">
-                <span className="font-heading font-bold text-base tracking-tight text-white">
-                  NOBAR KUY
-                </span>
-                {isOwner && (
-                  <span className="px-1.5 py-0.5 rounded text-[10px] font-semibold bg-[#D4AF37]/15 text-[#D4AF37] border border-[#D4AF37]/30">
-                    OWNER
-                  </span>
-                )}
-              </div>
-              <p className="text-[10px] text-stone-400 font-normal leading-none">
-                Nobar & Hias Border
-              </p>
-            </div>
-          </button>
-        </div>
-
-        {/* Right Actions: Dev Switcher & Coin Balance */}
-        <div className="flex items-center gap-2">
-          {/* Dev Account Switcher (Convenient for preview testing) */}
-          <div className="relative">
-            <button
-              onClick={() => setIsDevMenuOpen(!isDevMenuOpen)}
-              title="Ganti Akun Simulasi Telegram"
-              className="px-2 py-1.5 rounded-lg bg-[#141414] border border-[#262626] text-stone-300 hover:text-white flex items-center gap-1 text-[11px] font-medium transition-colors"
+    <header className="sticky top-0 z-40 select-none bg-gradient-to-r from-[#09070F] via-[#130C24] to-[#0B0914] backdrop-blur-md">
+      <div className="max-w-md mx-auto px-4 py-2.5 flex items-center justify-between gap-2.5">
+        {/* Left: 3D Popcorn+Play+Crown Logo & Animated NOBAR KUY Typography */}
+        <button
+          onClick={() => setActiveTab('beranda')}
+          className="flex items-center gap-2.5 text-left group min-w-0"
+        >
+          {/* 3D Popcorn + Play + Crown App Icon */}
+          <div className="relative w-10 h-10 shrink-0 flex items-center justify-center">
+            {/* Soft outer pulse aura */}
+            <div className="absolute -inset-0.5 rounded-xl bg-gradient-to-tr from-[#FF6B00] via-[#FF2D55] to-[#7C3AED] opacity-65 blur-[5px] animate-subtle-pulse" />
+            {/* Spinning subtle corner sparkle */}
+            <span className="absolute -top-1 -right-1 z-20 text-[9px] text-amber-300 animate-spin-medium pointer-events-none">
+              ✦
+            </span>
+            {/* Main 3D Rounded Icon */}
+            <div
+              className="relative z-10 w-10 h-10 rounded-xl bg-gradient-to-br from-[#FF6B00] via-[#FF2D55] to-[#7C3AED] p-[1.5px] shadow-[0_6px_16px_rgba(255,45,85,0.4)] transition-transform duration-200 group-active:scale-95"
             >
-              <Smartphone className="w-3.5 h-3.5 text-stone-400" />
-              <span className="hidden sm:inline max-w-[65px] truncate">{currentUser.nama.split(' ')[0]}</span>
-              <ChevronDown className="w-3 h-3 text-stone-500" />
-            </button>
-
-            {isDevMenuOpen && (
-              <div className="absolute right-0 mt-2 w-56 rounded-xl bg-[#141414] border border-[#262626] shadow-2xl p-2 z-50 text-xs">
-                <div className="px-2 py-1 text-[10px] uppercase font-bold text-stone-400 border-b border-[#222]">
-                  Simulasi Akun Telegram
-                </div>
-                <button
-                  onClick={() => {
-                    switchDevUser('FAIZ');
-                    setIsDevMenuOpen(false);
-                  }}
-                  className={`w-full text-left px-2.5 py-2 rounded-lg flex items-center justify-between hover:bg-[#1E1E1E] transition-colors ${
-                    currentUser.user_id === '6189849073' ? 'bg-[#1E1E1E] text-[#D4AF37] font-semibold' : 'text-stone-200'
-                  }`}
-                >
-                  <div className="flex items-center gap-2">
-                    <span className="text-sm">👑</span>
-                    <div>
-                      <div>Faiz (Owner)</div>
-                      <div className="text-[10px] text-stone-400 font-normal">Coin: ∞ • @istamina</div>
-                    </div>
-                  </div>
-                </button>
-                <button
-                  onClick={() => {
-                    switchDevUser('BIMO');
-                    setIsDevMenuOpen(false);
-                  }}
-                  className={`w-full text-left px-2.5 py-2 rounded-lg flex items-center justify-between hover:bg-[#1E1E1E] transition-colors ${
-                    currentUser.user_id === '198471239' ? 'bg-[#1E1E1E] text-white font-semibold' : 'text-stone-200'
-                  }`}
-                >
-                  <div className="flex items-center gap-2">
-                    <span className="text-sm">👤</span>
-                    <div>
-                      <div>Bimo Prakoso</div>
-                      <div className="text-[10px] text-stone-400 font-normal">Regular • @bimo12</div>
-                    </div>
-                  </div>
-                </button>
-                <button
-                  onClick={() => {
-                    switchDevUser('AYU');
-                    setIsDevMenuOpen(false);
-                  }}
-                  className={`w-full text-left px-2.5 py-2 rounded-lg flex items-center justify-between hover:bg-[#1E1E1E] transition-colors ${
-                    currentUser.user_id === '284719283' ? 'bg-[#1E1E1E] text-white font-semibold' : 'text-stone-200'
-                  }`}
-                >
-                  <div className="flex items-center gap-2">
-                    <span className="text-sm">🌸</span>
-                    <div>
-                      <div>Ayu Alodia</div>
-                      <div className="text-[10px] text-stone-400 font-normal">Host • @ayualodia</div>
-                    </div>
-                  </div>
-                </button>
-                <div className="border-t border-[#222] my-1 pt-1">
-                  <button
-                    onClick={() => {
-                      switchDevUser('NONE');
-                      setIsDevMenuOpen(false);
-                    }}
-                    className="w-full text-left px-2.5 py-1.5 rounded-lg text-rose-400 hover:bg-rose-500/10 text-[11px]"
-                  >
-                    Simulasi Browser Biasa (Non-Telegram)
-                  </button>
+              <div className="w-full h-full rounded-[10px] bg-gradient-to-b from-white/20 via-transparent to-black/30 flex flex-col items-center justify-center relative overflow-hidden">
+                {/* Inner top highlight */}
+                <div className="absolute top-0 inset-x-1 h-2 rounded-full bg-white/30 blur-[1px]" />
+                {/* Crown + Popcorn + Play composition */}
+                <Crown className="w-2.5 h-2.5 text-[#FDE047] fill-[#FDE047] -mb-0.5 drop-shadow" />
+                <div className="flex items-center gap-0.5">
+                  <span className="text-[11px] leading-none drop-shadow">🍿</span>
+                  <Play className="w-2.5 h-2.5 text-white fill-white drop-shadow" />
                 </div>
               </div>
-            )}
+            </div>
           </div>
 
-          {/* Coin Wallet Button */}
+          {/* Animated Title + Sparkles + Light Dust + Underline + Subtitle */}
+          <div className="min-w-0 relative">
+            <div className="relative inline-flex items-center gap-1.5 pr-3">
+              {/* Twinkling Sparkles around text */}
+              <span className="absolute -top-1 -left-1 text-[8px] text-amber-300 animate-sparkle pointer-events-none">
+                ✦
+              </span>
+              <span
+                className="absolute -top-0.5 right-0 text-[8px] text-orange-300 animate-sparkle pointer-events-none"
+                style={{ animationDelay: '0.6s' }}
+              >
+                ✦
+              </span>
+              <span
+                className="w-1 h-1 rounded-full bg-amber-200/80 absolute bottom-0.5 right-1.5 animate-dust pointer-events-none"
+              />
+              <span
+                className="w-0.5 h-0.5 rounded-full bg-violet-300/80 absolute top-0 left-1/2 animate-dust pointer-events-none"
+                style={{ animationDelay: '1.1s' }}
+              />
+
+              <span className="font-display font-extrabold text-[17px] uppercase tracking-wider leading-none nobar-title-shine">
+                NOBAR KUY
+              </span>
+            </div>
+
+            {/* Thin glowing underline */}
+            <div className="h-[1.5px] w-24 mt-1 rounded-full bg-gradient-to-r from-[#FF6B00] via-[#FF2D55] to-[#7C3AED] opacity-85 shadow-[0_0_6px_rgba(255,107,0,0.6)]" />
+
+            <p className="text-[9.5px] text-stone-300/85 font-medium tracking-wide leading-none mt-1 truncate">
+              Nobar &amp; Hias Border
+            </p>
+          </div>
+        </button>
+
+        {/* Right Actions: OWNER badge (@istamina ONLY) + Glassmorphism Coin Pill + Profile Avatar */}
+        <div className="flex items-center gap-1.5 shrink-0">
+          {isOwner && (
+            <span className="px-2 py-0.5 rounded-md text-[9.5px] font-heading font-extrabold uppercase tracking-wider bg-gradient-to-r from-[#FDE047] via-[#D4AF37] to-[#EA580C] text-black shadow-[0_0_10px_rgba(212,175,55,0.45)]">
+              OWNER
+            </span>
+          )}
+
+          {/* Glassmorphism Coin Balance Pill */}
           <button
             onClick={() => setIsWalletModalOpen(true)}
-            className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-[#141414] border border-[#262626] hover:border-[#D4AF37]/40 transition-colors"
+            className="flex items-center gap-1 px-2.5 py-1.5 rounded-full bg-white/[0.07] hover:bg-white/[0.12] backdrop-blur-md border border-white/15 hover:border-[#D4AF37]/50 transition-all active:scale-95 shadow-inner"
+            title="Dompet Coin Lu"
           >
-            <span className="text-sm leading-none">🪙</span>
-            <span className="font-heading font-bold text-xs tracking-tight text-white">
+            <span className="text-xs leading-none">🪙</span>
+            <span className="font-heading font-bold text-[11px] tracking-tight text-white">
               {isOwner ? '∞ Infinity' : currentUser.coin.toLocaleString('id-ID')}
             </span>
           </button>
 
-          {/* User Avatar thumbnail -> opens profile */}
+          {/* Right Circular Avatar -> Opens Profil */}
           <button
             onClick={() => setActiveTab('profil')}
-            className="focus:outline-none"
+            className="focus:outline-none transition-transform active:scale-95"
             title="Buka Profil Lu"
           >
             <UserAvatar
@@ -157,6 +115,9 @@ export const Navbar: React.FC = () => {
           </button>
         </div>
       </div>
+
+      {/* Bottom Thin Gradient Neon Border */}
+      <div className="h-[1px] w-full bg-gradient-to-r from-[#FF6B00]/50 via-[#FF2D55]/60 to-[#7C3AED]/55 shadow-[0_0_8px_rgba(124,58,237,0.45)]" />
     </header>
   );
 };

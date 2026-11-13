@@ -1,6 +1,6 @@
 /**
  * Telegram WebApp Integration Singleton
- * Handles real Telegram.WebApp.initDataUnsafe.user and test environment switching.
+ * Strictly uses real Telegram.WebApp.initDataUnsafe.user. No simulations or fake users.
  */
 
 export interface TelegramUser {
@@ -48,33 +48,6 @@ declare global {
   }
 }
 
-// Preset simulated accounts for development & testing
-export const SIMULATED_USERS = {
-  FAIZ_OWNER: {
-    id: 6189849073,
-    first_name: 'Faiz',
-    last_name: '',
-    username: 'istamina',
-    photo_url: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=300&q=80',
-  },
-  BIMO: {
-    id: 198471239,
-    first_name: 'Bimo',
-    last_name: 'Prakoso',
-    username: 'bimo12',
-    photo_url: 'https://images.unsplash.com/photo-1539571696357-5a69c17a67c6?auto=format&fit=crop&w=300&q=80',
-  },
-  AYU: {
-    id: 284719283,
-    first_name: 'Ayu',
-    last_name: 'Alodia',
-    username: 'ayualodia',
-    photo_url: 'https://images.unsplash.com/photo-1517841905240-472988babdf9?auto=format&fit=crop&w=300&q=80',
-  },
-};
-
-const DEV_OVERRIDE_KEY = 'nobarkuy_dev_user_override';
-
 export function getTelegramWebApp(): TelegramWebAppObject | undefined {
   if (typeof window !== 'undefined') {
     return window.Telegram?.WebApp;
@@ -95,32 +68,16 @@ export function initTelegram(): void {
 }
 
 export function getTelegramUser(): TelegramUser | null {
-  // Check localStorage dev override first (for easy switching in AI Studio web preview)
-  const override = localStorage.getItem(DEV_OVERRIDE_KEY);
-  if (override === 'NONE') {
-    return null; // Simulates pure browser without Telegram
-  }
-  if (override === 'BIMO') return SIMULATED_USERS.BIMO;
-  if (override === 'AYU') return SIMULATED_USERS.AYU;
-  if (override === 'FAIZ') return SIMULATED_USERS.FAIZ_OWNER;
-
-  // Real Telegram WebApp
   const tg = getTelegramWebApp();
-  if (tg?.initDataUnsafe?.user) {
+  if (tg?.initDataUnsafe?.user && tg.initDataUnsafe.user.id) {
     return tg.initDataUnsafe.user;
   }
-
-  // Default to Faiz Owner for smooth instant test preview if no real Telegram detected
-  return SIMULATED_USERS.FAIZ_OWNER;
+  return null;
 }
 
-export function setDevUserSimulation(mode: 'FAIZ' | 'BIMO' | 'AYU' | 'NONE') {
-  localStorage.setItem(DEV_OVERRIDE_KEY, mode);
-  window.dispatchEvent(new Event('telegram_user_changed'));
-}
-
-export function isOwnerUser(userId: string | number): boolean {
-  return String(userId) === '6189849073';
+export function isOwnerUsername(username?: string | null): boolean {
+  if (!username) return false;
+  return username.replace(/^@/, '').trim().toLowerCase() === 'istamina';
 }
 
 export function triggerHaptic(type: 'light' | 'success' | 'warning' = 'light') {
@@ -133,6 +90,6 @@ export function triggerHaptic(type: 'light' | 'success' | 'warning' = 'light') {
       tg.HapticFeedback.impactOccurred(type);
     }
   } catch (e) {
-    // Ignore haptic failures on unsupported clients
+    // Ignore haptic failures
   }
 }

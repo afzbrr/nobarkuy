@@ -11,23 +11,27 @@ export const RedeemModal: React.FC<RedeemModalProps> = ({ isOpen, onClose }) => 
   const { redeemCode } = useApp();
   const [code, setCode] = useState('');
   const [statusMsg, setStatusMsg] = useState<{ text: string; isError: boolean } | null>(null);
+  const [submitting, setSubmitting] = useState(false);
 
   if (!isOpen) return null;
 
-  const handleRedeem = () => {
+  const handleRedeem = async () => {
     setStatusMsg(null);
     if (!code.trim()) {
       setStatusMsg({ text: 'Ketik kodenya dulu bro!', isError: true });
       return;
     }
 
-    const res = redeemCode(code);
+    setSubmitting(true);
+    const res = await redeemCode(code);
+    setSubmitting(false);
+
     if (res.success) {
       setCode('');
       setStatusMsg({ text: res.message, isError: false });
       setTimeout(() => {
         onClose();
-      }, 1800);
+      }, 1600);
     } else {
       setStatusMsg({ text: res.message, isError: true });
     }
@@ -50,7 +54,7 @@ export const RedeemModal: React.FC<RedeemModalProps> = ({ isOpen, onClose }) => 
         </div>
 
         <p className="text-xs text-stone-400 mt-3 leading-relaxed">
-          Masukin kode hadiah yang dibagikan Faiz di Telegram / Story. Bisa dapet Coin Gratis atau Border Langka!
+          Masukin kode hadiah resmi dari Owner Faiz biar dapet Coin Gratis atau Border Langka!
         </p>
 
         <div className="mt-4">
@@ -58,7 +62,7 @@ export const RedeemModal: React.FC<RedeemModalProps> = ({ isOpen, onClose }) => 
             type="text"
             value={code}
             onChange={(e) => setCode(e.target.value.toUpperCase())}
-            placeholder="CONTOH: FAIZGANTENG"
+            placeholder="KETIK KODE REDEEM..."
             className="w-full bg-[#1A1A1A] border border-[#2A2A2A] rounded-xl px-4 py-3 text-sm font-heading font-bold uppercase tracking-wider text-white text-center focus:outline-none focus:border-[#D4AF37] transition-colors"
           />
         </div>
@@ -75,27 +79,13 @@ export const RedeemModal: React.FC<RedeemModalProps> = ({ isOpen, onClose }) => 
           </div>
         )}
 
-        <div className="mt-3 p-2.5 rounded-xl bg-[#181818] border border-[#222] text-[11px] text-stone-400">
-          <div className="font-medium text-stone-300 mb-1">Kode Aktif Hari Ini:</div>
-          <div className="flex flex-wrap gap-1.5">
-            <span className="px-2 py-0.5 rounded bg-[#222] text-[#D4AF37] font-mono cursor-pointer" onClick={() => setCode('FAIZGANTENG')}>
-              FAIZGANTENG
-            </span>
-            <span className="px-2 py-0.5 rounded bg-[#222] text-[#D4AF37] font-mono cursor-pointer" onClick={() => setCode('NOBARKUY')}>
-              NOBARKUY
-            </span>
-            <span className="px-2 py-0.5 rounded bg-[#222] text-[#D4AF37] font-mono cursor-pointer" onClick={() => setCode('NAGAGRATIS')}>
-              NAGAGRATIS
-            </span>
-          </div>
-        </div>
-
         <button
+          disabled={submitting}
           onClick={handleRedeem}
-          className="mt-4 w-full py-3 rounded-xl bg-white hover:bg-stone-200 text-black font-heading font-bold text-sm flex items-center justify-center gap-2 transition-transform active:scale-[0.98]"
+          className="mt-4 w-full py-3 rounded-xl bg-white hover:bg-stone-200 disabled:opacity-50 text-black font-heading font-bold text-sm flex items-center justify-center gap-2 transition-transform active:scale-[0.98]"
         >
           <Sparkles className="w-4 h-4 text-black" />
-          Klaim Hadiah Kode
+          {submitting ? 'Memeriksa...' : 'Claim Kode'}
         </button>
       </div>
     </div>

@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useApp } from '../../context/AppContext';
 import { UserAvatar } from '../UserAvatar';
 import { X, Send, AlertCircle } from 'lucide-react';
@@ -19,13 +19,22 @@ export const TransferModal: React.FC = () => {
   const [amountStr, setAmountStr] = useState<string>('50');
   const [note, setNote] = useState<string>('Nih buat hias border lu!');
   const [errorText, setErrorText] = useState<string | null>(null);
+  const [submitting, setSubmitting] = useState(false);
+
+  useEffect(() => {
+    if (isTransferModalOpen) {
+      setSelectedUserId(transferRecipient?.user_id || '');
+      setErrorText(null);
+    }
+  }, [isTransferModalOpen, transferRecipient]);
 
   if (!isTransferModalOpen) return null;
 
   const eligibleRecipients = allUsers.filter((u) => u.user_id !== currentUser.user_id);
-  const activeRecipient = allUsers.find((u) => u.user_id === selectedUserId) || transferRecipient || eligibleRecipients[0];
+  const activeRecipient =
+    allUsers.find((u) => u.user_id === selectedUserId) || transferRecipient || eligibleRecipients[0];
 
-  const handleTransfer = () => {
+  const handleTransfer = async () => {
     setErrorText(null);
     const amount = parseInt(amountStr, 10);
     if (isNaN(amount) || amount <= 0) {
@@ -45,11 +54,14 @@ export const TransferModal: React.FC = () => {
       return;
     }
     if (!activeRecipient) {
-      setErrorText('Pilih penerima dulu!');
+      setErrorText('Belum ada temen lain yang terdaftar buat dikirim Coin!');
       return;
     }
 
-    const res = transferCoin(activeRecipient.user_id, amount, note);
+    setSubmitting(true);
+    const res = await transferCoin(activeRecipient.user_id, amount, note);
+    setSubmitting(false);
+
     if (res.success) {
       setIsTransferModalOpen(false);
       setTransferRecipient(null);
@@ -83,36 +95,41 @@ export const TransferModal: React.FC = () => {
           <label className="text-[11px] font-medium text-stone-400 uppercase tracking-wider block mb-1.5">
             Penerima Coin
           </label>
-          <div className="flex items-center gap-3 p-3 rounded-xl bg-[#1A1A1A] border border-[#2A2A2A]">
-            {activeRecipient && (
-              <>
-                <UserAvatar
-                  foto={activeRecipient.foto}
-                  nama={activeRecipient.nama}
-                  borderId={activeRecipient.border_saat_ini}
-                  decorations={activeRecipient.decorations}
-                  size="sm"
-                />
-                <div className="flex-1 min-w-0">
-                  <div className="font-semibold text-xs text-white truncate">{activeRecipient.nama}</div>
-                  <div className="text-[10px] text-stone-400 font-normal">@{activeRecipient.username}</div>
-                </div>
-              </>
-            )}
+          {eligibleRecipients.length === 0 ? (
+            <div className="p-3 rounded-xl bg-[#1A1A1A] border border-[#2A2A2A] text-xs text-stone-400 text-center">
+              Belum ada pengguna lain yang gabung NOBAR KUY.
+            </div>
+          ) : (
+            <div className="flex items-center gap-3 p-3 rounded-xl bg-[#1A1A1A] border border-[#2A2A2A]">
+              {activeRecipient && (
+                <>
+                  <UserAvatar
+                    foto={activeRecipient.foto}
+                    nama={activeRecipient.nama}
+                    borderId={activeRecipient.border_saat_ini}
+                    decorations={activeRecipient.decorations}
+                    size="sm"
+                  />
+                  <div className="flex-1 min-w-0">
+                    <div className="font-semibold text-xs text-white truncate">{activeRecipient.nama}</div>
+                    <div className="text-[10px] text-stone-400 font-normal">@{activeRecipient.username}</div>
+                  </div>
+                </>
+              )}
 
-            {/* Quick dropdown if not locked */}
-            <select
-              value={activeRecipient?.user_id || ''}
-              onChange={(e) => setSelectedUserId(e.target.value)}
-              className="bg-[#242424] text-stone-300 text-xs rounded-lg px-2 py-1 border border-[#333] focus:outline-none focus:border-[#D4AF37]"
-            >
-              {eligibleRecipients.map((u) => (
-                <option key={u.user_id} value={u.user_id}>
-                  {u.nama} (@{u.username})
-                </option>
-              ))}
-            </select>
-          </div>
+              <select
+                value={activeRecipient?.user_id || ''}
+                onChange={(e) => setSelectedUserId(e.target.value)}
+                className="bg-[#242424] text-stone-300 text-xs rounded-lg px-2 py-1 border border-[#333] focus:outline-none focus:border-[#D4AF37]"
+              >
+                {eligibleRecipients.map((u) => (
+                  <option key={u.user_id} value={u.user_id}>
+                    {u.nama} (@{u.username})
+                  </option>
+                ))}
+              </select>
+            </div>
+          )}
         </div>
 
         {/* Input Amount */}
@@ -139,7 +156,6 @@ export const TransferModal: React.FC = () => {
             />
           </div>
 
-          {/* Quick Amount Pills */}
           <div className="grid grid-cols-4 gap-1.5 mt-2">
             {[10, 50, 100, 250].map((val) => (
               <button
@@ -174,7 +190,6 @@ export const TransferModal: React.FC = () => {
           />
         </div>
 
-        {/* Error message */}
         {errorText && (
           <div className="mt-3 p-2.5 rounded-xl bg-rose-500/10 border border-rose-500/20 text-rose-400 text-xs flex items-center gap-2">
             <AlertCircle className="w-4 h-4 shrink-0" />
@@ -182,13 +197,13 @@ export const TransferModal: React.FC = () => {
           </div>
         )}
 
-        {/* Submit Button */}
         <button
+          disabled={submitting || eligibleRecipients.length === 0}
           onClick={handleTransfer}
-          className="mt-5 w-full py-3 rounded-xl bg-white hover:bg-stone-200 text-black font-heading font-bold text-sm flex items-center justify-center gap-2 transition-transform active:scale-[0.98]"
+          className="mt-5 w-full py-3 rounded-xl bg-white hover:bg-stone-200 disabled:opacity-40 text-black font-heading font-bold text-sm flex items-center justify-center gap-2 transition-transform active:scale-[0.98]"
         >
           <Send className="w-4 h-4 text-black" />
-          Kirim Coin Sekarang
+          {submitting ? 'Mengirim...' : 'Kirim Coin Sekarang'}
         </button>
       </div>
     </div>

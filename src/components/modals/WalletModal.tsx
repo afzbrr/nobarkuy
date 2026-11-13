@@ -44,7 +44,7 @@ export const WalletModal: React.FC = () => {
           </div>
           <p className="text-[11px] text-stone-400 mt-1">
             {isOwner
-              ? 'Akun Owner Faiz: Coin unlimited, ga bakal pernah berkurang.'
+              ? 'Akun Owner (@istamina): Coin unlimited, ga bakal pernah berkurang.'
               : 'Coin lu cuma dipake buat belanja & hias border foto profil.'}
           </p>
 
@@ -60,21 +60,18 @@ export const WalletModal: React.FC = () => {
           </button>
         </div>
 
-        {/* Cara Dapetin Coin Info */}
+        {/* Cara Dapetin Coin Info (Tanpa referral & tanpa streak) */}
         <div className="mt-3 p-3 rounded-xl bg-[#1A1A1A] border border-[#242424] text-xs">
           <div className="flex items-center gap-1.5 text-stone-200 font-semibold mb-1.5">
             <HelpCircle className="w-3.5 h-3.5 text-[#D4AF37]" />
             <span>Cara Dapetin Coin Gratis:</span>
           </div>
           <ul className="text-[11px] text-stone-400 space-y-1 pl-1">
-            <li>• Pertama kali buka app: <strong className="text-stone-200">+1000 Coin</strong></li>
-            <li>• Nonton film sampe abis: <strong className="text-stone-200">+10 Coin</strong></li>
-            <li>• Menang Quiz di Room: <strong className="text-stone-200">+10 Coin</strong></li>
-            <li>• Check-in 7 hari berturut-turut: <strong className="text-stone-200">+10 Coin</strong></li>
-            <li>• Selesaiin semua Misi Harian: <strong className="text-stone-200">+20 Coin</strong></li>
-            <li>• Puter Roda Roulette Harian: <strong className="text-stone-200">10-50 Coin</strong></li>
-            <li>• Ambil Bagi-bagi Coin dari Faiz: <strong className="text-stone-200">100 Coin</strong></li>
-            <li>• Undang temen pake kode referral: <strong className="text-stone-200">+50 Coin</strong></li>
+            <li>• Pertama kali gabung: <strong className="text-stone-200">+1.000 Coin</strong></li>
+            <li>• Check-in Harian di menu Coin Gratis: <strong className="text-stone-200">+10 Coin/hari</strong></li>
+            <li>• Selesaiin Misi Harian &amp; Puter Roulette: <strong className="text-stone-200">5-50 Coin</strong></li>
+            <li>• Menang Quiz di Room Nobar: <strong className="text-stone-200">+10 Coin</strong></li>
+            <li>• Claim Bagi-bagi Coin &amp; Kode Redeem dari Faiz di Beranda</li>
           </ul>
         </div>
 

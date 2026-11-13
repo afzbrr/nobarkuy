@@ -3,28 +3,25 @@ export type GenreType = 'Horror' | 'Drakor' | 'Anime' | 'Komedi' | 'Action' | 'G
 export interface BorderDecorations {
   bingkai: string; // 'tipis' | 'tebal-emas' | 'berlian' | 'hitam-emas' | 'api' | 'pelangi'
   efek: string[]; // ['bintang', 'salju', 'confetti', 'gelembung', 'hati', 'petir', 'kembang-api']
-  warna: string; // 'merah' | 'biru' | 'ungu' | 'pink' | 'hijau' | 'hitam-emas' | 'abu' | 'emas-matte'
+  warna: string; // 'default' | 'merah' | 'biru' | 'ungu' | 'pink' | 'hijau' | 'hitam-emas' | 'abu' | 'emas-matte'
   sticker: string[]; // ['titik-emas', 'bintang-emas']
   animasi: string; // 'none' | 'goyang' | 'kedip' | 'muter'
 }
 
 export interface UserProfile {
-  user_id: string; // Telegram ID (e.g. "6189849073")
+  user_id: string; // Telegram ID
   nama: string;
   username: string;
   foto: string;
-  coin: number; // Faiz has Infinity (represented as -1 or huge number with isOwner check)
+  coin: number; // Owner @istamina is Infinity (represented cleanly via isOwner check)
   poin: number;
-  border_saat_ini: string; // e.g. "pemula", "naga", "faiz-ganteng"
-  custom_text: string; // e.g. "FAIZ GANTENG"
+  border_saat_ini: string; // e.g. "pemula", "semangat-nobar", "naga"
+  custom_text: string;
   total_hiasan_coin: number;
-  checkin_streak: number;
   checkin_terakhir: string | null; // YYYY-MM-DD
   checkin_hari_ke: number; // 1-7
-  kode_referral: string;
-  direferensikan_oleh: string | null;
-  total_nonton: number;
-  streak_nonton: number;
+  checkin_total: number;
+  total_nonton: number; // Cumulative total rooms watched since join, never resets
   terakhir_nonton: string | null;
   created_at: string;
   decorations: BorderDecorations;
@@ -42,24 +39,28 @@ export interface Room {
   host_custom_text?: string;
   genre: GenreType;
   is_private: boolean;
-  code_room: string; // 6 digit string, e.g. "123456"
-  video_url: string;
+  code_room: string; // 6 digit string
+  video_url: string; // YouTube link only
+  max_viewers: number; // 1 to 10
+  viewers: string[]; // array of user_ids currently in room
   status: 'live' | 'selesai';
   penonton_count: number;
   chats_count: number;
   created_at: string;
 }
 
-export interface RoomMember {
-  id: string;
-  room_id: string;
+export interface ChatReadReceipt {
   user_id: string;
   nama: string;
   username: string;
   foto: string;
   border: string;
-  is_cohost?: boolean;
-  joined_at: string;
+  read_at: string;
+}
+
+export interface ChatReactionUser {
+  user_id: string;
+  nama: string;
 }
 
 export interface ChatMessage {
@@ -71,34 +72,22 @@ export interface ChatMessage {
   foto: string;
   border: string;
   custom_text?: string;
+  decorations?: BorderDecorations;
   pesan: string;
+  reply_to?: {
+    id: string;
+    user_id: string;
+    nama: string;
+    pesan: string;
+  };
+  reactions?: Record<string, ChatReactionUser[]>;
+  read_by?: ChatReadReceipt[];
   is_gift?: boolean;
   gift_nama?: string;
   is_host?: boolean;
   is_owner?: boolean;
   is_system?: boolean;
   is_broadcast?: boolean;
-  read_by?: {
-    user_id: string;
-    nama: string;
-    username: string;
-    foto: string;
-    border: string;
-    read_at: string;
-  }[];
-  created_at: string;
-}
-
-export interface CoinTransfer {
-  id: string;
-  dari_user_id: string;
-  dari_nama: string;
-  dari_username: string;
-  ke_user_id: string;
-  ke_nama: string;
-  ke_username: string;
-  jumlah: number;
-  pesan?: string;
   created_at: string;
 }
 
@@ -109,7 +98,9 @@ export interface CoinGiveaway {
   jumlah_orang: number;
   total_coin: number;
   mulai_pada: string; // ISO string
+  selesai_pada: string; // ISO string
   status: 'upcoming' | 'active' | 'ended';
+  is_active: boolean;
   created_at: string;
   claims: {
     user_id: string;
@@ -129,11 +120,14 @@ export interface FlashSale {
   stok: number;
   sisa_stok: number;
   mulai_pada: string; // ISO string
+  selesai_pada: string; // ISO string
   status: 'upcoming' | 'active' | 'ended';
+  is_active: boolean;
   created_at: string;
   claims: {
     user_id: string;
     nama: string;
+    username?: string;
     created_at: string;
   }[];
 }
@@ -178,7 +172,28 @@ export interface RedeemCode {
   hadiah_border?: string;
   max_orang: number;
   dipakai_count: number;
-  berlaku_sampai: string;
+  mulai_pada: string; // ISO string
+  selesai_pada: string; // ISO string
+  is_published: boolean;
+  claimed_by: string[];
+  claims?: {
+    user_id: string;
+    nama: string;
+    username: string;
+    reward_text: string;
+    created_at: string;
+  }[];
+  created_at: string;
+}
+
+export interface RouletteWinner {
+  id: string;
+  user_id: string;
+  nama: string;
+  username: string;
+  foto: string;
+  border: string;
+  jumlah: number;
   created_at: string;
 }
 
@@ -189,6 +204,7 @@ export interface Broadcast {
   judul: string;
   pesan: string;
   target: 'all' | 'online' | 'in_room' | 'top_10' | 'not_checked_in';
+  is_published: boolean;
   created_at: string;
   aktif_sampai: string;
 }
@@ -204,8 +220,11 @@ export interface BorderDefinition {
   borderThickness: string;
   glowColor?: string;
   conicGradient?: string;
+  linearGradient?: string;
+  animationType?: 'none' | 'pulse' | 'spin' | 'spin-shimmer';
   hasShimmer?: boolean;
   cornerSticker?: string;
+  topBadge?: string;
   bisaDihias: boolean;
 }
 
